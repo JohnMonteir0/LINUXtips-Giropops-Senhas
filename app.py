@@ -5,7 +5,6 @@ import random
 import os
 from prometheus_client import Counter, start_http_server, generate_latest
 
-
 app = Flask(__name__)
 
 redis_host = os.environ.get('REDIS_HOST', 'redis-service')
@@ -15,7 +14,6 @@ redis_password = ""
 r = redis.StrictRedis(host=redis_host, port=redis_port, password=redis_password, decode_responses=True)
 
 senha_gerada_counter = Counter('senha_gerada', 'Contador de senhas geradas')
-
 
 def criar_senha(tamanho, incluir_numeros, incluir_caracteres_especiais):
     caracteres = string.ascii_letters
@@ -27,7 +25,6 @@ def criar_senha(tamanho, incluir_numeros, incluir_caracteres_especiais):
         caracteres += string.punctuation
 
     senha = ''.join(random.choices(caracteres, k=tamanho))
-
     return senha
 
 @app.route('/', methods=['GET', 'POST'])
@@ -40,12 +37,12 @@ def index():
 
         r.lpush("senhas", senha)
         senha_gerada_counter.inc()
+        
     senhas = r.lrange("senhas", 0, 9)
     if senhas:
         senhas_geradas = [{"id": index + 1, "senha": senha} for index, senha in enumerate(senhas)]
-        return render_template('index.html', senhas_geradas=senhas_geradas, senha=senhas_geradas[0]['senha'] or '' )
+        return render_template('index.html', senhas_geradas=senhas_geradas, senha=senhas_geradas[0]['senha'] or '')
     return render_template('index.html')
-
 
 @app.route('/api/gerar-senha', methods=['POST'])
 def gerar_senha_api():
@@ -75,5 +72,6 @@ def metrics():
 if __name__ == '__main__':
     import logging
     logging.basicConfig(filename='error.log', level=logging.DEBUG)
-    start_http_server(8088)
-    app.run(debug=False)
+    # Ensure the Flask app listens on all interfaces
+    app.run(host='0.0.0.0', port=5000, debug=True)
+
