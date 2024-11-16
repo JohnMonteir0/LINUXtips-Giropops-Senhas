@@ -24,6 +24,9 @@ services:
     volumes:
       - strigus:/strigus # Build Volume
     deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
       resources:
         reservations:
           cpus: '0.25'
