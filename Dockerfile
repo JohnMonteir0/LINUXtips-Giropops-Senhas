@@ -24,4 +24,3 @@ COPY --from=build /app/venv /venv
 
 # Command to run the Flask app
 ENTRYPOINT [ "python", "/app/app.py" ]
-#CMD ["flask", "run", "--host=0.0.0.0"]
