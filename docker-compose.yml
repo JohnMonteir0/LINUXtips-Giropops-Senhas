@@ -15,6 +15,14 @@ services:
       REDIS_HOST: redis  # Use the service name as the hostname
     volumes:
       - strigus:/strigus # Build Volume
+    deploy:
+      resources:
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+        limits:
+          cpus: '0.5'
+          memory: 256M
     depends_on:
       - redis
 
