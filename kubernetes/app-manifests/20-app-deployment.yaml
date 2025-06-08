@@ -4,6 +4,10 @@ metadata:
   labels:
     app: giropops-senhas
   name: giropops-senhas
+  annotations:
+    backstage.io/kubernetes-id: giropops-senhas
+    backstage.io/kubernetes-namespace: default
+    argo-cd/app-name: giropops-senhas
 spec:
   replicas: 2
   selector:
