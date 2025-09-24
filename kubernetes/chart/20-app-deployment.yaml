@@ -19,7 +19,7 @@ spec:
         app: giropops-senhas
     spec:
       containers:
-      - image: johnmonteir0/linuxtips-giropops-senhas:2.0
+      - image: johnmonteir0/linuxtips-giropops-senhas:3.0
         name: giropops-senhas
         env:
         - name: REDIS_HOST
