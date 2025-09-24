@@ -23,6 +23,19 @@ deployments:
       limits:
         memory: "256Mi"
         cpu: "500m"
+    env:
+      - name: REDIS_HOST
+        value: "redis"
+      - name: OTEL_SERVICE_NAME
+        value: "giropops-senhas"
+      - name: OTEL_EXPORTER_OTLP_ENDPOINT
+        value: "http://otel-collector.observability.svc.cluster.local:4318"
+      - name: OTEL_TRACES_EXPORTER
+        value: "otlp"
+      - name: OTEL_METRICS_EXPORTER
+        value: "otlp"
+      - name: OTEL_LOG_LEVEL
+        value: "info"
   redis:
     image: "johnmonteir0/chainguard-redis"
     replicas: 1

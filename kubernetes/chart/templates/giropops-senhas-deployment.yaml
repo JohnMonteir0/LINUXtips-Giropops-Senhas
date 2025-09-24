@@ -16,11 +16,21 @@ spec:
         {{- include "app.labels" $config | nindent 8 }}
     spec:
       containers:
-      - name: {{ $component }}
-        image: {{ $config.image }}
-        ports:
-        {{- include "app.ports" $config | nindent 10 }}
-        resources:
-          {{- include "app.resources" $config | nindent 12 }}
+        - name: {{ $component }}
+          image: {{ $config.image }}
+          ports:
+            {{- include "app.ports" $config | nindent 12 }}
+          {{- if $config.env }}
+          env:
+            {{- range $env := $config.env }}
+            - name: {{ $env.name }}
+              value: {{ $env.value | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if $config.resources }}
+          resources:
+            {{- toYaml $config.resources | nindent 12 }}
+          {{- end }}
 ---
 {{- end }}
+
