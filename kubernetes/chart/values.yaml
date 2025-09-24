@@ -24,8 +24,6 @@ deployments:
         memory: "256Mi"
         cpu: "500m"
     env:
-      - name: REDIS_HOST
-        value: "redis"
       - name: OTEL_SERVICE_NAME
         value: "giropops-senhas"
       - name: OTEL_EXPORTER_OTLP_ENDPOINT
