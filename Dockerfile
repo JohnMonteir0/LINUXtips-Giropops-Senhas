@@ -2,47 +2,35 @@
 FROM cgr.dev/chainguard/python:latest-dev as build
 
 ENV PATH="/app/venv/bin:$PATH"
-
-# Set working directory inside the container
 WORKDIR /app
 
-# Create virtual environment
 RUN python -m venv /app/venv
-
-# Copy source
 COPY . .
 
-# Install dependencies
+# Install deps
 RUN pip install --no-cache-dir -r requirements.txt
-RUN opentelemetry-bootstrap -a install
+
+# (optional but nice) install any extra auto-instr libs the distro suggests
+# This runs inside the venv because PATH points to /app/venv/bin
+RUN python -m opentelemetry.bootstrap -a install || true
 
 # -------- Runtime stage --------
 FROM cgr.dev/chainguard/python:latest
-
 WORKDIR /app
 
-# Copy venv from build stage
+# bring the venv across
 COPY --from=build /app/venv /venv
 COPY . ./
-
 ENV PATH="/venv/bin:$PATH"
 
-# --- OpenTelemetry configuration ---
-# Service name (shows up in traces)
-ENV OTEL_SERVICE_NAME="flask-password-generator"
+# OTel env (adjust endpoint/protocol for HTTP 4318)
+ENV OTEL_SERVICE_NAME="flask-password-generator" \
+    OTEL_EXPORTER_OTLP_ENDPOINT="http://otel-collector.giropops-senhas.svc.cluster.local:4318" \
+    OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf" \
+    OTEL_TRACES_EXPORTER="otlp" \
+    OTEL_TRACES_SAMPLER="always_on" \
+    OTEL_RESOURCE_ATTRIBUTES="deployment.environment=labs" \
+    OTEL_LOG_LEVEL="info"
 
-# Endpoint for OTLP (default OTEL Collector in Kubernetes)
-# Change if running locally: e.g., http://localhost:4318
-ENV OTEL_EXPORTER_OTLP_ENDPOINT="http://otel-collector:4318"
-
-# Enable both traces and metrics
-ENV OTEL_TRACES_EXPORTER="otlp"
-ENV OTEL_METRICS_EXPORTER="otlp"
-# (Prometheus reader is still exposed on /metrics by your app)
-
-# Optional: log level
-ENV OTEL_LOG_LEVEL="info"
-
-# Entrypoint: run Flask app
-ENTRYPOINT [ "opentelemetry-instrument", "python", "/app/app.py" ]
-
+# Use the module form (works even if the console script isn't present)
+ENTRYPOINT ["python", "-m", "opentelemetry.instrument", "python", "/app/app.py"]

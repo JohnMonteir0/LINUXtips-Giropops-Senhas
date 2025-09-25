@@ -30,6 +30,8 @@ deployments:
         value: "otlp"
       - name: OTEL_METRICS_EXPORTER
         value: "otlp"
+      - name: OTEL_EXPORTER_OTLP_PROTOCOL
+        value: "http/protobuf"
       - name: OTEL_LOG_LEVEL
         value: "info"
 
