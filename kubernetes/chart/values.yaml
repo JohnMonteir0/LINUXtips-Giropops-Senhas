@@ -7,12 +7,10 @@ deployments:
       - port: 5000
         targetPort: 5000
         name: "giropops-senhas-port"
-        serviceType: "NodePort"
         NodePort: 32500
       - port: 8088
         targetPort: 8088
         name: "giropops-senhas-metrics"
-        serviceType: "ClusterIP"
     labels:
       app: "giropops-senhas"
       env: "labs"
@@ -79,8 +77,7 @@ services:
       - port: 5000
         targetPort: 5000
         name: "app"
-        serviceType: "NodePort"
-        NodePort: 32500
+        serviceType: "ClusterIP"
       - port: 8088
         targetPort: 8088
         name: "metrics"
@@ -127,14 +124,14 @@ observability:
       logging:
         loglevel: debug
       jaeger:
-        endpoint: "jaeger:14250"
+        endpoint: "jaeger-collector:14250"  # or "jaeger-collector.giropops-senhas.svc.cluster.local:14250"
         tls:
           insecure: true
       prometheus:
         endpoint: "0.0.0.0:8889"
 
     processors:
-      batch:
+      batch: {}
 
     service:
       pipelines:
@@ -146,6 +143,7 @@ observability:
           receivers: [otlp]
           processors: [batch]
           exporters: [prometheus]
+
 
 databases:
   giropops-senhas:
