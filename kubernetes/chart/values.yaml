@@ -27,7 +27,7 @@ deployments:
       - name: OTEL_SERVICE_NAME
         value: "giropops-senhas"
       - name: OTEL_EXPORTER_OTLP_ENDPOINT
-        value: "http://otel-collector.observability.svc.cluster.local:4318"
+        value: "http://otel-collector.giropops-senhas.svc.cluster.local:4318"
       - name: OTEL_TRACES_EXPORTER
         value: "otlp"
       - name: OTEL_METRICS_EXPORTER
