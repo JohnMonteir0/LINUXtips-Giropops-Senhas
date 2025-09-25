@@ -51,7 +51,7 @@ deployments:
         cpu: "500m"
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.112.0
+    image: "otel/opentelemetry-collector-contrib:0.112.0"
     args: ["--config=/etc/otel-collector-config.yaml"]
     replicas: 2
     labels:
@@ -100,6 +100,7 @@ services:
       env: "labs"
 
   otel-collector:
+    serviceType: "ClusterIP"   # 👈 moved here (outside of ports list)
     ports:
       - name: otlp-grpc
         port: 4317
@@ -110,7 +111,6 @@ services:
       - name: metrics
         port: 8889
         targetPort: 8889
-      serviceType: "ClusterIP"
     labels:
       app: "otel-collector"
       env: "labs"
@@ -127,7 +127,7 @@ observability:
       logging:
         loglevel: debug
       jaeger:
-        endpoint: jaeger:14250
+        endpoint: "jaeger:14250"
         tls:
           insecure: true
       prometheus:
