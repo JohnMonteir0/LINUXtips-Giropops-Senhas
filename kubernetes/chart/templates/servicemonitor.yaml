@@ -1,0 +1,47 @@
+{{- if .Values.monitoring.enabled }}
+{{- range $sm := .Values.monitoring.serviceMonitors }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $sm.name }}
+  namespace: {{ $sm.namespace | default $.Release.Namespace }}
+  labels:
+    {{- if $sm.labels }}
+    {{- range $k, $v := $sm.labels }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+    {{- end }}
+    # Optional: if your Prometheus release filters ServiceMonitors by label
+    release: {{ $sm.prometheusRelease | default "kube-prometheus-stack" | quote }}
+spec:
+  selector:
+    matchLabels:
+      {{- range $k, $v := $sm.selector.matchLabels }}
+      {{ $k }}: {{ $v | quote }}
+      {{- end }}
+  namespaceSelector:
+    matchNames:
+      - {{ $sm.targetNamespace | default $.Release.Namespace }}
+  endpoints:
+    {{- range $ep := $sm.endpoints }}
+    - port: {{ $ep.port | quote }}
+      {{- if $ep.path }}
+      path: {{ $ep.path | quote }}
+      {{- end }}
+      {{- if $ep.scheme }}
+      scheme: {{ $ep.scheme | quote }}
+      {{- end }}
+      {{- if $ep.interval }}
+      interval: {{ $ep.interval | quote }}
+      {{- end }}
+      {{- if $ep.scrapeTimeout }}
+      scrapeTimeout: {{ $ep.scrapeTimeout | quote }}
+      {{- end }}
+      {{- if $ep.metricRelabelings }}
+      metricRelabelings:
+        {{- toYaml $ep.metricRelabelings | nindent 8 }}
+      {{- end }}
+    {{- end }}
+---
+{{- end }}
+{{- end }}

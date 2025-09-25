@@ -141,11 +141,11 @@ observability:
         traces:
           receivers: [otlp]
           processors: [batch]
-          exporters: [jaeger, logging]
+          exporters: [jaeger]
         metrics:
           receivers: [otlp]
           processors: [batch]
-          exporters: [prometheus, logging]
+          exporters: [prometheus]
 
 databases:
   giropops-senhas:
@@ -153,3 +153,41 @@ databases:
       host: "mysql.svc.cluster.local"
       port: 3306
       name: "MyDB"
+
+monitoring:
+  enabled: true
+
+  serviceMonitors:
+    # 1) OpenTelemetry Collector metrics
+    - name: otel-collector
+      namespace: giropops-senhas
+      labels:
+        app: otel-collector
+        env: labs
+      prometheusRelease: kube-prometheus-stack
+      selector:
+        matchLabels:
+          app: otel-collector         # must match the Service's labels
+      targetNamespace: giropops-senhas
+      endpoints:
+        - port: metrics               # must match Service port name (8889)
+          path: /metrics
+          interval: 30s
+          scrapeTimeout: 10s
+
+    # 2) App metrics
+    - name: giropops-senhas
+      namespace: giropops-senhas
+      labels:
+        app: giropops-senhas
+        env: labs
+      prometheusRelease: kube-prometheus-stack
+      selector:
+        matchLabels:
+          app: giropops-senhas        # must match the Service's labels
+      targetNamespace: giropops-senhas
+      endpoints:
+        - port: metrics               # must match Service port name (8088)
+          path: /metrics
+          interval: 30s
+          scrapeTimeout: 10s
