@@ -59,11 +59,11 @@ deployments:
       env: "labs"
     ports:
       - name: otlp-grpc
-        containerPort: 4317
+        port: 4317
       - name: otlp-http
-        containerPort: 4318
+        port: 4318
       - name: metrics
-        containerPort: 8889
+        port: 8889
     volumeMounts:
       - name: config
         mountPath: /etc/otel-collector-config.yaml
