@@ -48,6 +48,26 @@ deployments:
       limits:
         memory: "256Mi"
         cpu: "500m"
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.112.0
+    args: ["--config=/etc/otel-collector-config.yaml"]
+    volumeMounts:
+      - name: config
+        mountPath: /etc/otel-collector-config.yaml
+        subPath: otel-collector-config.yaml
+    replicas: 2
+    ports:
+      - name: otlp-grpc
+        containerPort: 4317
+      - name: otlp-http
+        containerPort: 4318
+      - name: metrics
+        containerPort: 8889
+    volume:
+      - name: config
+        configMap:
+          name: otel-collector-config
+      
 services:
   giropops-senhas:
     ports:
@@ -85,11 +105,36 @@ services:
       app: "opentelemetry"
       env: "labs"
 observability:
-  giropops-senhas:
-    logging: true
-    metrics:
-      enabled: true
-      path: "/metrics"
+  otel-collector-config:
+    receivers:
+      otlp:
+        protocols:
+          http:
+          grpc:
+
+    exporters:
+      logging:
+        loglevel: debug
+      jaeger:
+        endpoint: jaeger:14250
+        tls:
+          insecure: true
+      prometheus:
+        endpoint: "0.0.0.0:8889"
+
+    processors:
+      batch:
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [jaeger, logging]
+        metrics:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [prometheus, logging]
 databases:
   giropops-senhas:
     mysql:

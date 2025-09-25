@@ -31,6 +31,15 @@ spec:
           resources:
             {{- toYaml $config.resources | nindent 12 }}
           {{- end }}
+          {{- if $config.volumeMounts }}
+          volumeMounts:
+            {{- toYaml $config.volumeMounts | nindent 12 }}
+          {{- end }}
+      {{- if $config.volumes }}
+      volumes:
+        {{- toYaml $config.volumes | nindent 8 }}
+      {{- end }}
 ---
 {{- end }}
+
 
