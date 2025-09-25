@@ -15,5 +15,14 @@ spec:
   selector:
     app: {{ $config.labels.app | default $component }}
   ports:
-    {{- toYaml $config.ports | nindent 4 }}
+  {{- range $p := $config.ports }}
+    - name: {{ $p.name }}
+      port: {{ $p.port }}
+      targetPort: {{ $p.targetPort | default $p.port }}
+      protocol: {{ $p.protocol | default "TCP" }}
+      {{- if and (eq ($config.serviceType | default "ClusterIP") "NodePort") $p.nodePort }}
+      nodePort: {{ $p.nodePort }}
+      {{- end }}
+  {{- end }}
 {{- end }}
+
