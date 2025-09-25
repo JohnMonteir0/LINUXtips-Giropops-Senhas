@@ -14,6 +14,7 @@ COPY . .
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
+RUN opentelemetry-bootstrap -a install
 
 # -------- Runtime stage --------
 FROM cgr.dev/chainguard/python:latest
@@ -43,5 +44,5 @@ ENV OTEL_METRICS_EXPORTER="otlp"
 ENV OTEL_LOG_LEVEL="info"
 
 # Entrypoint: run Flask app
-ENTRYPOINT [ "python", "/app/app.py" ]
+ENTRYPOINT [ "opentelemetry-instrument", "python", "/app/app.py" ]
 
