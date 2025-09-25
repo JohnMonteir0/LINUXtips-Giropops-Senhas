@@ -71,7 +71,7 @@ deployments:
     volumes:
       - name: config
         configMap:
-          name: otel-collector-config
+          name: otel-collector-config-observability-config
       
 services:
   giropops-senhas:
