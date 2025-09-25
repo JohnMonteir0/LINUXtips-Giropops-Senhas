@@ -2,7 +2,7 @@ deployments:
   giropops-senhas:
     name: "giropops-senhas"
     image: "johnmonteir0/linuxtips-giropops-senhas:3.0"
-    replicas: "3"
+    replicas: 3
     ports:
       - port: 5000
         targetPort: 5000
@@ -34,6 +34,7 @@ deployments:
         value: "otlp"
       - name: OTEL_LOG_LEVEL
         value: "info"
+
   redis:
     image: "johnmonteir0/chainguard-redis"
     replicas: 1
@@ -48,13 +49,10 @@ deployments:
       limits:
         memory: "256Mi"
         cpu: "500m"
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.112.0
     args: ["--config=/etc/otel-collector-config.yaml"]
-    volumeMounts:
-      - name: config
-        mountPath: /etc/otel-collector-config.yaml
-        subPath: otel-collector-config.yaml
     replicas: 2
     labels:
       app: "otel-collector"
@@ -66,7 +64,11 @@ deployments:
         containerPort: 4318
       - name: metrics
         containerPort: 8889
-    volume:
+    volumeMounts:
+      - name: config
+        mountPath: /etc/otel-collector-config.yaml
+        subPath: otel-collector-config.yaml
+    volumes:
       - name: config
         configMap:
           name: otel-collector-config
@@ -86,6 +88,7 @@ services:
     labels:
       app: "giropops-senhas"
       env: "labs"
+
   redis:
     ports:
       - port: 6379
@@ -95,6 +98,7 @@ services:
     labels:
       app: "redis"
       env: "labs"
+
   otel-collector:
     ports:
       - name: otlp-grpc
@@ -103,10 +107,14 @@ services:
       - name: otlp-http
         port: 4318
         targetPort: 4318
-        serviceType: "ClusterIP"
+      - name: metrics
+        port: 8889
+        targetPort: 8889
+      serviceType: "ClusterIP"
     labels:
-      app: "opentelemetry"
+      app: "otel-collector"
       env: "labs"
+
 observability:
   otel-collector-config:
     receivers:
@@ -138,10 +146,10 @@ observability:
           receivers: [otlp]
           processors: [batch]
           exporters: [prometheus, logging]
+
 databases:
   giropops-senhas:
     mysql:
       host: "mysql.svc.cluster.local"
       port: 3306
       name: "MyDB"
-    
