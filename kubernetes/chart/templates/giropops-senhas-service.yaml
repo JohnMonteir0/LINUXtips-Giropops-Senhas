@@ -1,23 +1,19 @@
 {{- range $component, $config := .Values.services }}
-{{- range $port := $config.ports }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ printf "%s-%s" $component $port.name }}
+  {{- if eq $component "redis" }}
+  name: redis-service
+  {{- else }}
+  name: {{ $component }}
+  {{- end }}
   labels:
     {{- include "app.labels" $config | nindent 4 }}
 spec:
-  type: {{ $port.serviceType | default "ClusterIP" }}
+  type: {{ $config.serviceType | default "ClusterIP" }}
   selector:
     app: {{ $config.labels.app | default $component }}
   ports:
-    - name: {{ $port.name }}
-      port: {{ $port.port }}
-      targetPort: {{ $port.targetPort | default $port.port }}
-      protocol: TCP
-      {{- if and (eq ($port.serviceType | default "ClusterIP") "NodePort") $port.nodePort }}
-      nodePort: {{ $port.nodePort }}
-      {{- end }}
-{{- end }}
+    {{- toYaml $config.ports | nindent 4 }}
 {{- end }}
