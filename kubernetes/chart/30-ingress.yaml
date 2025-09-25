@@ -14,6 +14,6 @@ spec:
         pathType: Prefix
         backend:
           service: 
-            name: giropops-senhas-app
+            name: giropops-senhas
             port:
               number: 5000
