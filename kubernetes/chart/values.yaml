@@ -56,6 +56,9 @@ deployments:
         mountPath: /etc/otel-collector-config.yaml
         subPath: otel-collector-config.yaml
     replicas: 2
+    labels:
+      app: "otel-collector"
+      env: "labs"
     ports:
       - name: otlp-grpc
         containerPort: 4317
