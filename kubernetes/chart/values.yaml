@@ -100,7 +100,7 @@ services:
       env: "labs"
 
   otel-collector:
-    serviceType: "ClusterIP"   # 👈 moved here (outside of ports list)
+    serviceType: "ClusterIP"
     ports:
       - name: otlp-grpc
         port: 4317
