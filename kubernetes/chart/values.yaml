@@ -79,7 +79,51 @@ services:
       env: "labs"
 
 observability:
-  otel-collector-config: {}
+  otel-collector-config:
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      batch: {}
+
+    exporters:
+      # Ship traces to Jaeger (all-in-one) over OTLP/HTTP
+      otlphttp:
+        endpoint: "http://jaeger.giropops-senhas.svc.cluster.local:4318"
+
+      # Optional: see spans in Collector logs
+      debug:
+        verbosity: normal
+
+      # Collector metrics for Prometheus
+      prometheus:
+        endpoint: "0.0.0.0:8889"
+
+    service:
+      telemetry:
+        logs:
+          level: info
+
+      pipelines:
+        traces:
+          receivers:  [otlp]
+          processors: [batch]
+          exporters:  [otlphttp, debug]
+
+        metrics:
+          receivers:  [otlp]
+          processors: [batch]
+          exporters:  [prometheus]
+
+        logs:
+          receivers:  [otlp]
+          processors: [batch]
+          exporters:  [debug]
 
 databases:
   giropops-senhas:
