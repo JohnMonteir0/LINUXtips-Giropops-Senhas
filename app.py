@@ -5,62 +5,25 @@ import random
 import os
 import logging
 
-# --- OpenTelemetry setup ---
-from opentelemetry import trace, metrics
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-# Use gRPC exporters (not HTTP)
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-from opentelemetry.exporter.prometheus import PrometheusMetricReader
-from opentelemetry.instrumentation.flask import FlaskInstrumentor
-from opentelemetry.instrumentation.redis import RedisInstrumentor
+# --- Only the OTEL API (no SDK wiring here) ---
+from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
-# Resource (service name, etc.)
-resource = Resource(attributes={SERVICE_NAME: "giropops-senhas"})
-
-# ---- Traces (gRPC -> Collector :4317, plaintext) ----
-trace.set_tracer_provider(TracerProvider(resource=resource))
-tracer_provider = trace.get_tracer_provider()
-otlp_traces = OTLPSpanExporter(
-    endpoint="otel-collector.giropops-senhas.svc.cluster.local:4317",  # gRPC: host:port (no scheme)
-    insecure=True,                                                     # Collector is plaintext
-)
-tracer_provider.add_span_processor(BatchSpanProcessor(otlp_traces))
-tracer = trace.get_tracer(__name__)
-
-# ---- Metrics: Prometheus + OTLP gRPC (plaintext) ----
-prom_reader = PrometheusMetricReader()  # exposes /metrics via prometheus_client
-otlp_metrics = OTLPMetricExporter(
-    endpoint="otel-collector.giropops-senhas.svc.cluster.local:4317",  # gRPC
-    insecure=True,
-)
-metrics.set_meter_provider(
-    MeterProvider(
-        resource=resource,
-        metric_readers=[
-            prom_reader,
-            PeriodicExportingMetricReader(otlp_metrics),
-        ],
-    )
-)
-meter = metrics.get_meter(__name__)
-senha_counter = meter.create_counter(
-    "senha_gerada_total", description="Total de senhas geradas"
-)
+# Plain Prometheus client for /metrics scraping
+from prometheus_client import Counter, generate_latest
 
 # Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("giropops-senhas")
 
-# --- Flask app + auto-instrumentation ---
+# Tracer is provided by the auto-instrumentation runtime
+tracer = trace.get_tracer(__name__)
+
+# Prometheus counter (not OTEL metrics)
+senha_counter = Counter("senha_gerada_total", "Total de senhas geradas")
+
+# --- Flask app (auto-instrumentation will hook Flask/Redis automatically) ---
 app = Flask(__name__)
-FlaskInstrumentor().instrument_app(app)  # traces HTTP routes
-RedisInstrumentor().instrument()         # traces redis commands
 
 # Redis client
 redis_host = os.environ.get("REDIS_HOST", "redis-service")
@@ -73,7 +36,7 @@ r = redis.StrictRedis(
     decode_responses=True,
 )
 
-# -------- Custom spans --------
+# -------- Custom spans (these are fine) --------
 def criar_senha(tamanho, incluir_numeros, incluir_caracteres_especiais):
     with tracer.start_as_current_span("criar_senha") as span:
         span.set_attribute("senha.tamanho", tamanho)
@@ -108,7 +71,7 @@ def index():
                     rspan.set_attribute("redis.list", "senhas")
                     r.lpush("senhas", senha)
 
-                senha_counter.add(1)
+                senha_counter.inc()
 
             with tracer.start_as_current_span("redis_lrange") as rspan:
                 rspan.set_attribute("redis.list", "senhas")
@@ -145,7 +108,7 @@ def gerar_senha_api():
                 rspan.set_attribute("redis.list", "senhas")
                 r.lpush("senhas", senha)
 
-            senha_counter.add(1)
+            senha_counter.inc()
             return jsonify({"senha": senha})
 
         except Exception as exc:
@@ -172,12 +135,10 @@ def listar_senhas():
             logger.exception("Error in /api/senhas")
             return jsonify({"error": "internal"}), 500
 
-# Prometheus metrics endpoint
+# Prometheus metrics endpoint (plain client)
 @app.route("/metrics")
 def metrics_endpoint():
-    from prometheus_client import generate_latest
     return generate_latest()
 
 if __name__ == "__main__":
-    # You can switch debug to False for prod
     app.run(host="0.0.0.0", port=5000, debug=True)
