@@ -2,12 +2,13 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: giropops-senhas
+  namespace: giropops-senhas
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   ingressClassName: nginx
   rules:
-  - host: giropops-senhas.905418429534.realhandsonlabs.net
+  - host: giropops-senhas.554949496620.realhandsonlabs.net
     http:
       paths:
       - path: /

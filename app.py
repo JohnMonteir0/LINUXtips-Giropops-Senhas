@@ -12,8 +12,9 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+# CHANGED: use gRPC exporters (not HTTP)
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.redis import RedisInstrumentor
@@ -22,21 +23,16 @@ from opentelemetry.trace import Status, StatusCode
 # Resource (service name, etc.)
 resource = Resource(attributes={SERVICE_NAME: "giropops-senhas"})
 
-# Traces
+# Traces (gRPC -> Collector :4317)
 trace.set_tracer_provider(TracerProvider(resource=resource))
 tracer_provider = trace.get_tracer_provider()
-# Use the Collector service FQDN + HTTP/Protobuf (set OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf via env)
-otlp_traces = OTLPSpanExporter(
-    endpoint="http://otel-collector.giropops-senhas.svc.cluster.local:4318"  # base; exporter appends /v1/traces
-)
+otlp_traces = OTLPSpanExporter(endpoint="otel-collector:4317")  # gRPC: no scheme, no /v1/traces
 tracer_provider.add_span_processor(BatchSpanProcessor(otlp_traces))
 tracer = trace.get_tracer(__name__)
 
-# Metrics: Prometheus + OTLP
-prom_reader = PrometheusMetricReader()  # exposes your /metrics endpoint
-otlp_metrics = OTLPMetricExporter(
-    endpoint="http://otel-collector.giropops-senhas.svc.cluster.local:4318"  # base; exporter appends /v1/metrics
-)
+# Metrics: Prometheus + OTLP gRPC
+prom_reader = PrometheusMetricReader()  # exposes /metrics via prometheus_client
+otlp_metrics = OTLPMetricExporter(endpoint="otel-collector:4317")  # gRPC
 metrics.set_meter_provider(
     MeterProvider(
         resource=resource,
@@ -123,7 +119,6 @@ def index():
             return render_template("index.html")
 
         except Exception as exc:
-            # Mark the span as error and include message
             span.record_exception(exc)
             span.set_status(Status(StatusCode.ERROR, str(exc)))
             logger.exception("Error handling index request")
@@ -182,5 +177,4 @@ def metrics_endpoint():
     return generate_latest()
 
 if __name__ == "__main__":
-    # Keep debug=False in production
     app.run(host="0.0.0.0", port=5000, debug=True)

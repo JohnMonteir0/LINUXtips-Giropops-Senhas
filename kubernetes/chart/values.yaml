@@ -25,13 +25,11 @@ deployments:
       - name: OTEL_SERVICE_NAME
         value: "giropops-senhas"
       - name: OTEL_EXPORTER_OTLP_ENDPOINT
-        value: "http://otel-collector.giropops-senhas.svc.cluster.local:4318"
+        value: "otel-collector.giropops-senhas.svc.cluster.local:4317"
       - name: OTEL_TRACES_EXPORTER
         value: "otlp"
       - name: OTEL_METRICS_EXPORTER
         value: "otlp"
-      - name: OTEL_EXPORTER_OTLP_PROTOCOL
-        value: "http/protobuf"
       - name: OTEL_LOG_LEVEL
         value: "info"
 
