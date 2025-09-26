@@ -22,15 +22,23 @@ deployments:
         memory: "256Mi"
         cpu: "500m"
     env:
+      # App telemetry identity + verbosity
       - name: OTEL_SERVICE_NAME
         value: "giropops-senhas"
       - name: OTEL_LOG_LEVEL
         value: "info"
+
+      # Be explicit about sampling/resource attrs (helps debugging)
+      - name: OTEL_TRACES_SAMPLER
+        value: "always_on"
+      - name: OTEL_RESOURCE_ATTRIBUTES
+        value: "deployment.environment=labs"
+
+      # these are not strictly required, but harmless as hints/fallbacks:
       - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
         value: "otel-collector.giropops-senhas.svc.cluster.local:4317"
-      - name: OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
-        value: "otel-collector.giropops-senhas.svc.cluster.local:4317"
-      # If your app exporter doesn’t set insecure=True in code, uncomment these:
+      - name: OTEL_EXPORTER_OTLP_PROTOCOL
+        value: "grpc"
       - name: OTEL_EXPORTER_OTLP_INSECURE
         value: "true"
 
@@ -127,16 +135,17 @@ observability:
       batch: {}
 
     exporters:
-      # send traces to Jaeger Collector (gRPC on 14250)
+      # Send traces to Jaeger via **OTLP gRPC**
       otlp/jaeger:
-        endpoint: jaeger.giropops-senhas.svc.cluster.local:4317
+        endpoint: jaeger-collector.giropops-senhas.svc.cluster.local:4317
         tls:
           insecure: true
 
+      # Useful to see incoming spans in Collector logs
       logging:
         loglevel: debug
 
-      # expose collector metrics for Prometheus
+      # Expose Collector metrics for Prometheus
       prometheus:
         endpoint: "0.0.0.0:8889"
 
