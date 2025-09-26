@@ -26,6 +26,13 @@ deployments:
         value: "giropops-senhas"
       - name: OTEL_LOG_LEVEL
         value: "info"
+      - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+        value: "otel-collector.giropops-senhas.svc.cluster.local:4317"
+      - name: OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
+        value: "otel-collector.giropops-senhas.svc.cluster.local:4317"
+      # If your app exporter doesn’t set insecure=True in code, uncomment these:
+      - name: OTEL_EXPORTER_OTLP_INSECURE
+        value: "true"
 
   redis:
     image: "johnmonteir0/chainguard-redis"
@@ -64,7 +71,7 @@ deployments:
       - name: config
         configMap:
           name: otel-collector-config-observability-config
-      
+
 services:
   giropops-senhas:
     ports:
@@ -116,18 +123,18 @@ observability:
           http:
             endpoint: 0.0.0.0:4318
 
-    exporters:
-      logging:
-        loglevel: debug
-      jaeger:
-        endpoint: jaeger-collector:14250
-        tls:
-          insecure: true
-      prometheus:
-        endpoint: "0.0.0.0:8889"
-
     processors:
       batch: {}
+
+    exporters:
+      # send traces to Jaeger Collector (gRPC on 14250)
+      jaeger:
+        endpoint: jaeger-collector.giropops-senhas.svc.cluster.local:14250
+        tls:
+          insecure: true
+      # expose collector metrics for Prometheus
+      prometheus:
+        endpoint: "0.0.0.0:8889"
 
     service:
       pipelines:
@@ -140,7 +147,6 @@ observability:
           processors: [batch]
           exporters: [prometheus]
 
-
 databases:
   giropops-senhas:
     mysql:
@@ -150,36 +156,31 @@ databases:
 
 monitoring:
   enabled: true
-
   serviceMonitors:
     - name: otel-collector
       namespace: giropops-senhas
-      labels:
-        app: otel-collector
-        env: labs
+      labels: { app: otel-collector, env: labs }
       prometheusRelease: kube-prometheus-stack
       selector:
         matchLabels:
-          app: otel-collector         # must match the Service's labels
+          app: otel-collector
       targetNamespace: giropops-senhas
       endpoints:
-        - port: metrics               # must match Service port name (8889)
+        - port: metrics
           path: /metrics
           interval: 30s
           scrapeTimeout: 10s
 
     - name: giropops-senhas
       namespace: giropops-senhas
-      labels:
-        app: giropops-senhas
-        env: labs
+      labels: { app: giropops-senhas, env: labs }
       prometheusRelease: kube-prometheus-stack
       selector:
         matchLabels:
-          app: giropops-senhas        # must match the Service's labels
+          app: giropops-senhas
       targetNamespace: giropops-senhas
       endpoints:
-        - port: metrics               # must match Service port name (8088)
+        - port: metrics
           path: /metrics
           interval: 30s
           scrapeTimeout: 10s
