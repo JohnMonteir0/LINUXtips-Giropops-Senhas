@@ -9,7 +9,7 @@ deployments:
         name: "giropops-senhas-port"
         NodePort: 32500
       - port: 8088
-        targetPort: 8088
+        targetPort: 5000
         name: "giropops-senhas-metrics"
     labels:
       app: "giropops-senhas"
@@ -18,7 +18,7 @@ deployments:
       requests: { memory: "128Mi", cpu: "250m" }
       limits:   { memory: "256Mi", cpu: "500m" }
 
-    # >>> Run via auto-instrumentation wrapper <<<
+    # Run with OpenTelemetry auto-instrumentation
     command: ["/bin/sh","-lc"]
     args:
       - >
@@ -29,7 +29,7 @@ deployments:
         python app.py
 
     env:
-      # Identity & verbosity
+      # identity & verbosity
       - name: OTEL_LOG_LEVEL
         value: "info"
       - name: OTEL_TRACES_SAMPLER
@@ -37,7 +37,7 @@ deployments:
       - name: OTEL_RESOURCE_ATTRIBUTES
         value: "deployment.environment=labs"
 
-      # Send OTLP *directly to Jaeger* over HTTP/protobuf (4318)
+      # export traces directly to Jaeger (OTLP/HTTP)
       - name: OTEL_EXPORTER_OTLP_ENDPOINT
         value: "http://jaeger-collector.giropops-senhas.svc.cluster.local:4318"
       - name: OTEL_EXPORTER_OTLP_PROTOCOL
@@ -52,8 +52,6 @@ deployments:
       requests: { memory: "128Mi", cpu: "250m" }
       limits:   { memory: "256Mi", cpu: "500m" }
 
-# Collector is no longer needed — removed
-
 services:
   giropops-senhas:
     ports:
@@ -62,7 +60,7 @@ services:
         name: "app"
         serviceType: "ClusterIP"
       - port: 8088
-        targetPort: 8088
+        targetPort: 5000        # << matches the deployment fix above
         name: "metrics"
         serviceType: "ClusterIP"
     labels: { app: "giropops-senhas", env: "labs" }
@@ -75,7 +73,7 @@ services:
         serviceType: "ClusterIP"
     labels: { app: "redis", env: "labs" }
 
-# Entire "observability: otel-collector-config" section removed
+# (Collector completely removed)
 
 databases:
   giropops-senhas:
@@ -87,7 +85,6 @@ databases:
 monitoring:
   enabled: true
   serviceMonitors:
-    # Keep only the app's ServiceMonitor (Collector one removed)
     - name: giropops-senhas
       namespace: giropops-senhas
       labels: { app: giropops-senhas, env: labs }
