@@ -24,12 +24,6 @@ deployments:
     env:
       - name: OTEL_SERVICE_NAME
         value: "giropops-senhas"
-      - name: OTEL_EXPORTER_OTLP_ENDPOINT
-        value: "otel-collector.giropops-senhas.svc.cluster.local:4317"
-      - name: OTEL_TRACES_EXPORTER
-        value: "otlp"
-      - name: OTEL_METRICS_EXPORTER
-        value: "otlp"
       - name: OTEL_LOG_LEVEL
         value: "info"
 
@@ -117,14 +111,16 @@ observability:
     receivers:
       otlp:
         protocols:
-          http:
           grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
 
     exporters:
       logging:
         loglevel: debug
       jaeger:
-        endpoint: "jaeger-collector:14250"  # or "jaeger-collector.giropops-senhas.svc.cluster.local:14250"
+        endpoint: jaeger-collector:14250
         tls:
           insecure: true
       prometheus:

@@ -12,7 +12,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-# CHANGED: use gRPC exporters (not HTTP)
+# Use gRPC exporters (not HTTP)
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
@@ -23,16 +23,22 @@ from opentelemetry.trace import Status, StatusCode
 # Resource (service name, etc.)
 resource = Resource(attributes={SERVICE_NAME: "giropops-senhas"})
 
-# Traces (gRPC -> Collector :4317)
+# ---- Traces (gRPC -> Collector :4317, plaintext) ----
 trace.set_tracer_provider(TracerProvider(resource=resource))
 tracer_provider = trace.get_tracer_provider()
-otlp_traces = OTLPSpanExporter(endpoint="otel-collector:4317")  # gRPC: no scheme, no /v1/traces
+otlp_traces = OTLPSpanExporter(
+    endpoint="otel-collector.giropops-senhas.svc.cluster.local:4317",  # gRPC: host:port (no scheme)
+    insecure=True,                                                     # Collector is plaintext
+)
 tracer_provider.add_span_processor(BatchSpanProcessor(otlp_traces))
 tracer = trace.get_tracer(__name__)
 
-# Metrics: Prometheus + OTLP gRPC
+# ---- Metrics: Prometheus + OTLP gRPC (plaintext) ----
 prom_reader = PrometheusMetricReader()  # exposes /metrics via prometheus_client
-otlp_metrics = OTLPMetricExporter(endpoint="otel-collector:4317")  # gRPC
+otlp_metrics = OTLPMetricExporter(
+    endpoint="otel-collector.giropops-senhas.svc.cluster.local:4317",  # gRPC
+    insecure=True,
+)
 metrics.set_meter_provider(
     MeterProvider(
         resource=resource,
@@ -67,9 +73,8 @@ r = redis.StrictRedis(
     decode_responses=True,
 )
 
-# -------- Custom spans start here --------
+# -------- Custom spans --------
 def criar_senha(tamanho, incluir_numeros, incluir_caracteres_especiais):
-    # Child span for the password creation work
     with tracer.start_as_current_span("criar_senha") as span:
         span.set_attribute("senha.tamanho", tamanho)
         span.set_attribute("senha.incluir_numeros", bool(incluir_numeros))
@@ -86,7 +91,6 @@ def criar_senha(tamanho, incluir_numeros, incluir_caracteres_especiais):
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    # Top-level span (child of the HTTP server span) for app logic
     with tracer.start_as_current_span("index_handler") as span:
         try:
             if request.method == "POST":
@@ -100,14 +104,12 @@ def index():
 
                 senha = criar_senha(tamanho, incluir_numeros, incluir_caracteres_especiais)
 
-                # Child span around Redis LPUSH
                 with tracer.start_as_current_span("redis_lpush") as rspan:
                     rspan.set_attribute("redis.list", "senhas")
                     r.lpush("senhas", senha)
 
                 senha_counter.add(1)
 
-            # Child span around Redis LRANGE
             with tracer.start_as_current_span("redis_lrange") as rspan:
                 rspan.set_attribute("redis.list", "senhas")
                 senhas = r.lrange("senhas", 0, 9)
@@ -177,4 +179,5 @@ def metrics_endpoint():
     return generate_latest()
 
 if __name__ == "__main__":
+    # You can switch debug to False for prod
     app.run(host="0.0.0.0", port=5000, debug=True)
