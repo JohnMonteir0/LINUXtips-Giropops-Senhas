@@ -5,30 +5,52 @@ import random
 import os
 import logging
 
-# --- Only the OTEL API (no SDK wiring here) ---
+# --- OpenTelemetry SDK (in-process) ---
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from opentelemetry.instrumentation.redis import RedisInstrumentor
 
-# Plain Prometheus client for /metrics scraping
+# Prometheus metrics (plain client)
 from prometheus_client import Counter, generate_latest
 
-# Logging
+# ---------- Config ----------
+SERVICE_NAME = os.environ.get("OTEL_SERVICE_NAME", "giropops-senhas")
+# Prefer env if provided; default to docker-compose service "jaeger:4317"
+OTLP_TRACES_ENDPOINT = os.environ.get(
+    "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+    "jaeger:4317",
+)
+
+# ---------- Logging ----------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("giropops-senhas")
 
-# Tracer is provided by the auto-instrumentation runtime
+# ---------- OTEL Tracing setup ----------
+resource = Resource.create({"service.name": SERVICE_NAME})
+
+provider = TracerProvider(resource=resource)
+exporter = OTLPSpanExporter(
+    endpoint=OTLP_TRACES_ENDPOINT,  # host:port (no scheme)
+    insecure=True,                  # Jaeger all-in-one default is plaintext
+)
+provider.add_span_processor(BatchSpanProcessor(exporter))
+trace.set_tracer_provider(provider)
 tracer = trace.get_tracer(__name__)
 
-# Prometheus counter (not OTEL metrics)
-senha_counter = Counter("senha_gerada_total", "Total de senhas geradas")
-
-# --- Flask app (auto-instrumentation will hook Flask/Redis automatically) ---
+# ---------- Flask app + auto-instrument libs ----------
 app = Flask(__name__)
+FlaskInstrumentor().instrument_app(app)
+RedisInstrumentor().instrument()
 
-# Redis client
+# ---------- Redis client ----------
 redis_host = os.environ.get("REDIS_HOST", "redis-service")
-redis_port = 6379
-redis_password = ""
+redis_port = int(os.environ.get("REDIS_PORT", "6379"))
+redis_password = os.environ.get("REDIS_PASSWORD", "")
 r = redis.StrictRedis(
     host=redis_host,
     port=redis_port,
@@ -36,7 +58,10 @@ r = redis.StrictRedis(
     decode_responses=True,
 )
 
-# -------- Custom spans (these are fine) --------
+# ---------- Prometheus metric ----------
+senha_counter = Counter("senha_gerada_total", "Total de senhas geradas")
+
+# ---------- App code ----------
 def criar_senha(tamanho, incluir_numeros, incluir_caracteres_especiais):
     with tracer.start_as_current_span("criar_senha") as span:
         span.set_attribute("senha.tamanho", tamanho)
@@ -49,8 +74,7 @@ def criar_senha(tamanho, incluir_numeros, incluir_caracteres_especiais):
         if incluir_caracteres_especiais:
             caracteres += string.punctuation
 
-        senha = ''.join(random.choices(caracteres, k=tamanho))
-        return senha
+        return "".join(random.choices(caracteres, k=tamanho))
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -80,7 +104,6 @@ def index():
             if senhas:
                 senhas_geradas = [{"id": idx + 1, "senha": s} for idx, s in enumerate(senhas)]
                 return render_template("index.html", senhas_geradas=senhas_geradas, senha=senhas_geradas[0]["senha"])
-
             return render_template("index.html")
 
         except Exception as exc:
@@ -110,7 +133,6 @@ def gerar_senha_api():
 
             senha_counter.inc()
             return jsonify({"senha": senha})
-
         except Exception as exc:
             span.record_exception(exc)
             span.set_status(Status(StatusCode.ERROR, str(exc)))
@@ -128,17 +150,17 @@ def listar_senhas():
             resposta = [{"id": idx + 1, "senha": s} for idx, s in enumerate(senhas)]
             span.set_attribute("senhas.count", len(resposta))
             return jsonify(resposta)
-
         except Exception as exc:
             span.record_exception(exc)
             span.set_status(Status(StatusCode.ERROR, str(exc)))
             logger.exception("Error in /api/senhas")
             return jsonify({"error": "internal"}), 500
 
-# Prometheus metrics endpoint (plain client)
+# Prometheus metrics endpoint
 @app.route("/metrics")
 def metrics_endpoint():
     return generate_latest()
 
 if __name__ == "__main__":
+    # DEBUG=True is fine locally; disable in prod.
     app.run(host="0.0.0.0", port=5000, debug=True)
