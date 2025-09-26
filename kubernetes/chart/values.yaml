@@ -27,16 +27,12 @@ deployments:
         value: "giropops-senhas"
       - name: OTEL_LOG_LEVEL
         value: "info"
-
-      # Be explicit about sampling/resource attrs (helps debugging)
       - name: OTEL_TRACES_SAMPLER
         value: "always_on"
       - name: OTEL_RESOURCE_ATTRIBUTES
         value: "deployment.environment=labs"
-
-      # unified OTLP endpoint for all signals
       - name: OTEL_EXPORTER_OTLP_ENDPOINT
-        value: "otel-collector.giropops-senhas.svc.cluster.local:4317"
+        value: "otel-collector-opentelemetry-collector:4317"
       - name: OTEL_EXPORTER_OTLP_PROTOCOL
         value: "grpc"
       - name: OTEL_EXPORTER_OTLP_INSECURE
@@ -56,29 +52,6 @@ deployments:
       limits:
         memory: "256Mi"
         cpu: "500m"
-
-  otel-collector:
-    image: "otel/opentelemetry-collector-contrib:0.112.0"
-    args: ["--config=/conf/otel-collector-config.yaml"]
-    replicas: 2
-    labels:
-      app: "otel-collector"
-      env: "labs"
-    ports:
-      - name: otlp-grpc
-        port: 4317
-      - name: otlp-http
-        port: 4318
-      - name: metrics
-        port: 8889
-    volumeMounts:
-      - name: config
-        mountPath: /conf
-        readOnly: true
-    volumes:
-      - name: config
-        configMap:
-          name: otel-collector-config-observability-config
 
 services:
   giropops-senhas:
@@ -105,60 +78,8 @@ services:
       app: "redis"
       env: "labs"
 
-  otel-collector:
-    serviceType: "ClusterIP"
-    ports:
-      - name: otlp-grpc
-        port: 4317
-        targetPort: 4317
-      - name: otlp-http
-        port: 4318
-        targetPort: 4318
-      - name: metrics
-        port: 8889
-        targetPort: 8889
-    labels:
-      app: "otel-collector"
-      env: "labs"
-
 observability:
-  otel-collector-config:
-    receivers:
-      otlp:
-        protocols:
-          grpc:
-            endpoint: 0.0.0.0:4317
-          http:
-            endpoint: 0.0.0.0:4318
-
-    processors:
-      batch: {}
-
-    exporters:
-      # Send traces to Jaeger via gRPC collector port
-      otlp/jaeger:
-        endpoint: jaeger.giropops-senhas.svc.cluster.local:14250
-        tls:
-          insecure: true
-
-      # Useful to see incoming spans in Collector logs
-      logging:
-        loglevel: debug
-
-      # Expose Collector metrics for Prometheus
-      prometheus:
-        endpoint: "0.0.0.0:8889"
-
-    service:
-      pipelines:
-        traces:
-          receivers: [otlp]
-          processors: [batch]
-          exporters: [otlp/jaeger, logging]
-        metrics:
-          receivers: [otlp]
-          processors: [batch]
-          exporters: [prometheus]
+  otel-collector-config: {}
 
 databases:
   giropops-senhas:
@@ -170,20 +91,7 @@ databases:
 monitoring:
   enabled: true
   serviceMonitors:
-    - name: otel-collector
-      namespace: giropops-senhas
-      labels: { app: otel-collector, env: labs }
-      prometheusRelease: kube-prometheus-stack
-      selector:
-        matchLabels:
-          app: otel-collector
-      targetNamespace: giropops-senhas
-      endpoints:
-        - port: metrics
-          path: /metrics
-          interval: 30s
-          scrapeTimeout: 10s
-
+    # App metrics
     - name: giropops-senhas
       namespace: giropops-senhas
       labels: { app: giropops-senhas, env: labs }
