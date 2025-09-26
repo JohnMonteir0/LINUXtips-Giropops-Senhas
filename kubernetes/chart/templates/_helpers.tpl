@@ -40,8 +40,8 @@ data:
     {{- toYaml .config | nindent 4 }}
 {{- end }}
 
-{{/*
-Define configmaps observability
+{{/* 
+  Define configmaps observability 
 */}}
 {{- define "observability.configmap" -}}
 apiVersion: v1
@@ -49,6 +49,6 @@ kind: ConfigMap
 metadata:
   name: {{ .component }}-observability-config
 data:
-  app-config.json: |
-    {{ toJson .config }}
+  otel-collector-config.yaml: |
+    {{- toYaml .config | nindent 4 }}
 {{- end }}
