@@ -59,7 +59,7 @@ deployments:
 
   otel-collector:
     image: "otel/opentelemetry-collector-contrib:0.112.0"
-    args: ["--config=/etc/otel-collector-config.yaml"]
+    args: ["--config=/conf/otel-collector-config.yaml"]
     replicas: 2
     labels:
       app: "otel-collector"
@@ -73,8 +73,8 @@ deployments:
         port: 8889
     volumeMounts:
       - name: config
-        mountPath: /etc/otel-collector-config.yaml
-        subPath: otel-collector-config.yaml
+        mountPath: /conf
+        readOnly: true
     volumes:
       - name: config
         configMap:
