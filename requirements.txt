@@ -1,16 +1,28 @@
+# Core app
 Flask==3.0.3
 redis==4.5.4
 prometheus-client==0.16.0
 
-# OpenTelemetry core
+# OpenTelemetry core + exporters you are using in code
 opentelemetry-api==1.27.0
 opentelemetry-sdk==1.27.0
-opentelemetry-distro==0.48b0
+opentelemetry-exporter-otlp==1.27.0
+opentelemetry-exporter-prometheus==0.48b0
 
-# Instrumentations
+# Instrumentations used in code
 opentelemetry-instrumentation-flask==0.48b0
 opentelemetry-instrumentation-redis==0.48b0
-opentelemetry-instrumentation-requests==0.48b0
+# Core app
+Flask==3.0.3
+redis==4.5.4
+prometheus-client==0.16.0
 
-# Exporter
+# OpenTelemetry core + exporters you are using in code
+opentelemetry-api==1.27.0
+opentelemetry-sdk==1.27.0
 opentelemetry-exporter-otlp==1.27.0
+opentelemetry-exporter-prometheus==0.48b0
+
+# Instrumentations used in code
+opentelemetry-instrumentation-flask==0.48b0
+opentelemetry-instrumentation-redis==0.48b0
