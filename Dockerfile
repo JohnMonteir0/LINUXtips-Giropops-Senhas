@@ -1,27 +1,43 @@
-# -------- Build stage --------
+# ---------- Build ----------
 FROM cgr.dev/chainguard/python:latest-dev AS build
-ENV PATH="/app/venv/bin:$PATH"
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    VIRTUAL_ENV=/home/nonroot/venv
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
 WORKDIR /app
 
-# Create and use venv
-RUN python -m venv /app/venv
+# Create venv and install deps
+RUN python -m venv "$VIRTUAL_ENV" \
+ && python -m pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Install deps
 COPY requirements.txt .
-RUN python -m pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy app
+# Copy your app
 COPY . .
 
-# -------- Runtime stage --------
+# ---------- Runtime ----------
 FROM cgr.dev/chainguard/python:latest
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    VIRTUAL_ENV=/home/nonroot/venv
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
 WORKDIR /app
 
-# Bring venv + app
-COPY --from=build /app/venv /venv
-COPY . ./
+# Bring over the prebuilt venv and your app
+COPY --from=build $VIRTUAL_ENV $VIRTUAL_ENV
+COPY . .
 
-ENV PATH="/venv/bin:$PATH"
+# Optional: declare port (helps docs/tools)
+EXPOSE 5000
 
-# Run the app directly (we're using code-based OTEL init)
-ENTRYPOINT ["python", "/app/app.py"]
+# --- Option A: Gunicorn (recommended for prod) ---
+# Requires your app to expose "app" (Flask) in app.py or wsgi.py
+# CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:5000", "app:app"]
+
+# --- Option B: Plain Python (fine for labs/dev) ---
+CMD ["python", "/app/app.py"]

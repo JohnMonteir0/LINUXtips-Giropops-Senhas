@@ -1,14 +1,13 @@
+# Core app
 Flask==3.0.3
 redis==4.5.4
 prometheus-client==0.16.0
 
-# OpenTelemetry pins that match each other
-opentelemetry-api==1.37.0
-opentelemetry-sdk==1.37.0
-opentelemetry-exporter-otlp==1.37.0
-opentelemetry-semantic-conventions==0.58b0
-
-# Instrumentations you actually use in code
-opentelemetry-instrumentation==0.58b0
-opentelemetry-instrumentation-flask==0.58b0
-opentelemetry-instrumentation-redis==0.58b0
+# OpenTelemetry (runtime auto-instrumentation + instrumentations)
+opentelemetry-api==1.27.0
+opentelemetry-sdk==1.27.0
+opentelemetry-exporter-otlp==1.27.0
+opentelemetry-instrumentation==0.48b0
+opentelemetry-instrumentation-flask==0.48b0
+opentelemetry-instrumentation-redis==0.48b0
+opentelemetry-instrumentation-logging==0.48b0

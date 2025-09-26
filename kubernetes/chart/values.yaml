@@ -34,8 +34,8 @@ deployments:
       - name: OTEL_RESOURCE_ATTRIBUTES
         value: "deployment.environment=labs"
 
-      # these are not strictly required, but harmless as hints/fallbacks:
-      - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+      # unified OTLP endpoint for all signals
+      - name: OTEL_EXPORTER_OTLP_ENDPOINT
         value: "otel-collector.giropops-senhas.svc.cluster.local:4317"
       - name: OTEL_EXPORTER_OTLP_PROTOCOL
         value: "grpc"
@@ -135,9 +135,9 @@ observability:
       batch: {}
 
     exporters:
-      # Send traces to Jaeger via **OTLP gRPC**
+      # Send traces to Jaeger via gRPC collector port
       otlp/jaeger:
-        endpoint: jaeger-collector.giropops-senhas.svc.cluster.local:4317
+        endpoint: jaeger.giropops-senhas.svc.cluster.local:14250
         tls:
           insecure: true
 
