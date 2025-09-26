@@ -128,10 +128,14 @@ observability:
 
     exporters:
       # send traces to Jaeger Collector (gRPC on 14250)
-      jaeger:
-        endpoint: jaeger-collector.giropops-senhas.svc.cluster.local:14250
+      otlp/jaeger:
+        endpoint: jaeger.giropops-senhas.svc.cluster.local:4317
         tls:
           insecure: true
+
+      logging:
+        loglevel: debug
+
       # expose collector metrics for Prometheus
       prometheus:
         endpoint: "0.0.0.0:8889"
@@ -141,7 +145,7 @@ observability:
         traces:
           receivers: [otlp]
           processors: [batch]
-          exporters: [jaeger]
+          exporters: [otlp/jaeger, logging]
         metrics:
           receivers: [otlp]
           processors: [batch]
