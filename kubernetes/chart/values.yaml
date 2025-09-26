@@ -1,7 +1,7 @@
 deployments:
   giropops-senhas:
     name: "giropops-senhas"
-    image: "johnmonteir0/linuxtips-giropops-senhas:4.0"
+    image: "johnmonteir0/linuxtips-giropops-senhas:5.0"
     replicas: 3
     ports:
       - port: 5000
@@ -158,7 +158,6 @@ monitoring:
   enabled: true
 
   serviceMonitors:
-    # 1) OpenTelemetry Collector metrics
     - name: otel-collector
       namespace: giropops-senhas
       labels:
@@ -175,7 +174,6 @@ monitoring:
           interval: 30s
           scrapeTimeout: 10s
 
-    # 2) App metrics
     - name: giropops-senhas
       namespace: giropops-senhas
       labels:
