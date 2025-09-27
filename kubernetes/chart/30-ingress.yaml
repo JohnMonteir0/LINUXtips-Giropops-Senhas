@@ -8,7 +8,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-  - host: giropops-senhas.936668162005.realhandsonlabs.net
+  - host: giropops-senhas.675621751232.realhandsonlabs.net
     http:
       paths:
       - path: /
