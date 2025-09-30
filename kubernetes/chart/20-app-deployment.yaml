@@ -19,11 +19,13 @@ spec:
         app: giropops-senhas
     spec:
       containers:
-      - image: johnmonteir0/linuxtips-giropops-senhas:2.0
+      - image: johnmonteir0/linuxtips-giropops-senhas:4.0
         name: giropops-senhas
         env:
         - name: REDIS_HOST
           value: redis-service
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://otel-collector.observability.svc.cluster.local:4318
         ports:
         - containerPort: 5000
         imagePullPolicy: Always

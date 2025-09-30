@@ -1,26 +1,39 @@
-# Use the official Python chainguard image
-FROM cgr.dev/chainguard/python:latest-dev as build
+# ---------- Build ----------
+FROM cgr.dev/chainguard/python:latest-dev AS build
 
-ENV PATH="/app/venv/bin:$PATH"
+# Chainguard runs as non-root; create venv somewhere writable
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    VIRTUAL_ENV=/home/nonroot/venv
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Set working directory inside the container
 WORKDIR /app
 
-# Set virtual environment
-RUN python -m venv /app/venv
-COPY . .
+# Create venv and install deps
+RUN python -m venv "$VIRTUAL_ENV" \
+ && python -m pip install --no-cache-dir --upgrade pip setuptools wheel
 
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Build production image from build stage
+# Bring in the app source
+COPY . .
+
+# ---------- Runtime ----------
 FROM cgr.dev/chainguard/python:latest
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    VIRTUAL_ENV=/home/nonroot/venv
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 WORKDIR /app
 
-ENV PATH="/venv/bin:$PATH"
+# Copy the prebuilt venv and app
+COPY --from=build $VIRTUAL_ENV $VIRTUAL_ENV
+COPY . .
 
-COPY . ./
-COPY --from=build /app/venv /venv
+EXPOSE 5000
 
-# Command to run the Flask app
-ENTRYPOINT [ "python", "/app/app.py" ]
+# Run your (code-instrumented) Flask app directly
+ENTRYPOINT ["/home/nonroot/venv/bin/python", "/app/app.py"]

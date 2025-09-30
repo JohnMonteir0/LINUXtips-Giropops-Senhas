@@ -1,18 +1,16 @@
 deployments:
   giropops-senhas:
     name: "giropops-senhas"
-    image: "johnmonteir0/linuxtips-giropops-senhas:2.0"
-    replicas: "3"
+    image: "johnmonteir0/linuxtips-giropops-senhas:7.1"
+    replicas: 3
     ports:
       - port: 5000
         targetPort: 5000
         name: "giropops-senhas-port"
-        serviceType: "NodePort"
         NodePort: 32500
       - port: 8088
         targetPort: 8088
         name: "giropops-senhas-metrics"
-        serviceType: "ClusterIP"
     labels:
       app: "giropops-senhas"
       env: "labs"
@@ -23,6 +21,23 @@ deployments:
       limits:
         memory: "256Mi"
         cpu: "500m"
+    env:
+      # App telemetry identity + verbosity
+      - name: OTEL_SERVICE_NAME
+        value: "giropops-senhas"
+      - name: OTEL_LOG_LEVEL
+        value: "info"
+      - name: OTEL_TRACES_SAMPLER
+        value: "always_on"
+      - name: OTEL_RESOURCE_ATTRIBUTES
+        value: "deployment.environment=labs"
+      - name: OTEL_EXPORTER_OTLP_ENDPOINT
+        value: "otel-collector-opentelemetry-collector:4317"
+      - name: OTEL_EXPORTER_OTLP_PROTOCOL
+        value: "grpc"
+      - name: OTEL_EXPORTER_OTLP_INSECURE
+        value: "true"
+
   redis:
     image: "johnmonteir0/chainguard-redis"
     replicas: 1
@@ -37,21 +52,22 @@ deployments:
       limits:
         memory: "256Mi"
         cpu: "500m"
+
 services:
   giropops-senhas:
     ports:
       - port: 5000
         targetPort: 5000
         name: "app"
-        serviceType: "NodePort"
-        NodePort: 32500
-      - port: 8088
-        targetPort: 8088
+        serviceType: "ClusterIP"
+      - port: 5000
+        targetPort: 5000
         name: "metrics"
         serviceType: "ClusterIP"
     labels:
       app: "giropops-senhas"
       env: "labs"
+
   redis:
     ports:
       - port: 6379
@@ -61,16 +77,75 @@ services:
     labels:
       app: "redis"
       env: "labs"
+
 observability:
-  giropops-senhas:
-    logging: true
-    metrics:
-      enabled: true
-      path: "/metrics"
+  otel-collector-config:
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      batch: {}
+
+    exporters:
+      # Ship traces to Jaeger (all-in-one) over OTLP/HTTP
+      otlphttp:
+        endpoint: "http://jaeger.giropops-senhas.svc.cluster.local:4318"
+
+      # Optional: see spans in Collector logs
+      debug:
+        verbosity: normal
+
+      # Collector metrics for Prometheus
+      prometheus:
+        endpoint: "0.0.0.0:8889"
+
+    service:
+      telemetry:
+        logs:
+          level: info
+
+      pipelines:
+        traces:
+          receivers:  [otlp]
+          processors: [batch]
+          exporters:  [otlphttp, debug]
+
+        metrics:
+          receivers:  [otlp]
+          processors: [batch]
+          exporters:  [prometheus]
+
+        logs:
+          receivers:  [otlp]
+          processors: [batch]
+          exporters:  [debug]
+
 databases:
   giropops-senhas:
     mysql:
       host: "mysql.svc.cluster.local"
       port: 3306
       name: "MyDB"
-    
+
+monitoring:
+  enabled: true
+  serviceMonitors:
+    # App metrics
+    - name: giropops-senhas
+      namespace: giropops-senhas
+      labels: { app: giropops-senhas, env: labs }
+      prometheusRelease: kube-prometheus-stack
+      selector:
+        matchLabels:
+          app: giropops-senhas
+      targetNamespace: giropops-senhas
+      endpoints:
+        - port: app
+          path: /metrics
+          interval: 30s
+          scrapeTimeout: 10s
