@@ -145,7 +145,7 @@ monitoring:
           app: giropops-senhas
       targetNamespace: giropops-senhas
       endpoints:
-        - port: metrics
+        - port: app
           path: /metrics
           interval: 30s
           scrapeTimeout: 10s
