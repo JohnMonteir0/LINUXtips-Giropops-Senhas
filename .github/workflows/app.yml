@@ -1,4 +1,4 @@
-name: App CI (Build → Push → Sonar)
+name: App CI (Build → Push; Scan separate)
 
 on:
   push:
@@ -8,6 +8,7 @@ on:
       - 'Dockerfile'
       - 'requirements.txt'
       - '.github/workflows/app.yml'
+
   workflow_dispatch: {}
 
 env:
@@ -23,24 +24,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build_push_and_scan:
+  build_and_push:
     runs-on: ubuntu-latest
-
+    outputs:
+      image_tag: ${{ env.IMAGE_TAG }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # (optional) better Python indexing for Sonar
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-      - name: Install deps (best-effort)
-        run: |
-          if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -67,12 +58,19 @@ jobs:
           cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
           cache-to: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
 
-      # --- SonarQube scan (Community) ---
-      # Requires repo secrets:
-      #   SONAR_HOST_URL  -> e.g. https://sonarqube.<account>.realhandsonlabs.net
-      #   SONAR_TOKEN     -> user token from SonarQube (Admin → Security → Users → Tokens)
+  sonar_scan:
+    runs-on: ubuntu-latest
+    needs: build_and_push
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deps (best-effort)
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v2
         env:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_TOKEN:    ${{ secrets.SONAR_TOKEN }}
