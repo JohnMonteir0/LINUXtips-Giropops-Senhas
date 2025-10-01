@@ -741,8 +741,8 @@ resource "helm_release" "sonarqube" {
         ingressClassName = "nginx"
         annotations = {
           "external-dns.alpha.kubernetes.io/hostname"      = "sonarqube.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"
-          "cert-manager.io/cluster-issuer"                 = "letsencrypt-staging"
           "nginx.ingress.kubernetes.io/force-ssl-redirect" = "false"
+          "nginx.ingress.kubernetes.io/ssl-redirect"       = "false"
           "nginx.ingress.kubernetes.io/backend-protocol"   = "HTTP"
         }
         hosts = [
@@ -750,12 +750,6 @@ resource "helm_release" "sonarqube" {
             name     = "sonarqube.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"
             path     = "/"
             pathType = "Prefix"
-          }
-        ]
-        tls = [
-          {
-            secretName = "letsencrypt-staging"
-            hosts      = ["sonarqube.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"]
           }
         ]
       }

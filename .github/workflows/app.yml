@@ -8,6 +8,7 @@ on:
       - 'Dockerfile'
       - 'requirements.txt'
       - '.github/workflows/app.yml'
+
   workflow_dispatch: {}
 
 env:
@@ -68,25 +69,8 @@ jobs:
       - name: Install deps (best-effort)
         run: |
           if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
-
-      # 🔎 Debug the URL and ensure it’s HTTP and reachable from runner
-      - name: Debug Sonar URL (scheme/host only)
-        run: |
-          set -e
-          if [ -z "${SONAR_HOST_URL:-}" ]; then
-            echo "SONAR_HOST_URL is EMPTY"; exit 1
-          fi
-          echo "Using SONAR_HOST_URL:"
-          echo "${SONAR_HOST_URL}" | sed -E 's|(https?://[^/]+).*|\1|'
-          curl -sS -o /dev/null -w "HTTP %{http_code} final: %{url_effective}\n" -L "${SONAR_HOST_URL}/api/system/health" || true
-        env:
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v2
         env:
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}   # should be http://...
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
           SONAR_TOKEN:    ${{ secrets.SONAR_TOKEN }}
-        with:
-          args: >
-            -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
