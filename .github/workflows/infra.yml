@@ -1,0 +1,169 @@
+name: "Terraform: Plan → Manual approval → Apply (main)"
+
+on:
+  push:
+    branches: [ main ]   # run after a PR is merged
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/infra.yml'
+  
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+  issues: write          # needed so the approval action can open/comment issues
+
+env:
+  TF_LOG: INFO
+  TF_LOG_PATH: tf.log
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  APPROVERS: JohnMonteir0
+  MIN_APPROVALS: 1
+
+# Never run two pipelines for the same branch/ref at once
+concurrency:
+  group: tf-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: "Terraform plan (saved as tfplan)"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: .
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # <<< OIDC auth: assume the role via GitHub OIDC >>>
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-tf-plan-${{ github.run_id }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Terraform init
+        run: terraform init -reconfigure -upgrade
+
+      - name: Terraform fmt
+        run: terraform fmt -recursive
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan (create binary plan + plaintext)
+        run: |
+          terraform plan -no-color -input=false -lock-timeout=2m -out=tfplan | tee tf-plan.out
+          # Keep a trimmed copy to embed in the approval issue (max body size safety)
+          tail -n 500 tf-plan.out > tf-plan.tail.txt
+
+      - name: Upload plan artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ github.run_id }}
+          path: |
+            tfplan
+            tf-plan.out
+            tf-plan.tail.txt
+
+  approve:
+    name: "Manual approval (issue-based)"
+    needs: plan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download plan tail
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ github.run_id }}
+
+      - name: Read plan tail into env
+        id: read_plan
+        run: |
+          # Wrap in markdown code block for readability
+          {
+            echo 'PLAN_BODY<<EOF'
+            echo '```'
+            sed -e 's/`/\\`/g' tf-plan.tail.txt
+            echo '```'
+            echo 'EOF'
+          } >> "$GITHUB_ENV"
+
+      - name: Await manual approval
+        uses: trstringer/manual-approval@v1
+        with:
+          secret: ${{ github.TOKEN }}
+          approvers: ${{ env.APPROVERS }}
+          minimum-approvals: ${{ env.MIN_APPROVALS }}
+          issue-title: "Terraform apply approval for run ${{ github.run_id }}"
+          issue-body: |
+            Please review and approve this deployment.
+            **Branch/Commit:** ${{ github.ref }} / ${{ github.sha }}
+            **Workflow run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            **Plan (last ~500 lines):**
+            ${{ env.PLAN_BODY }}
+# Docs: https://github.com/trstringer/manual-approval (keywords & behavior). :contentReference[oaicite:1]{index=1}
+
+  apply:
+    name: "Terraform apply (from saved plan)"
+    needs: approve
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: .
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-tf-apply-${{ github.run_id }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Terraform init
+        run: terraform init -reconfigure -upgrade
+
+      - name: Download saved plan
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ github.run_id }}
+
+      - name: Apply the exact saved plan (with lock wait)
+        run: terraform apply -no-color -input=false -lock-timeout=20m tfplan | tee tf-apply.out
+
+      # Best-effort diagnostics + auto-unlock on failure/cancel
+      - name: Upload logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-logs-${{ github.run_id }}
+          path: |
+            tf.log
+            tf-plan.out
+            tf-apply.out
+
+      - name: Force-unlock on failure/cancel (best-effort)
+        if: failure() || cancelled()
+        run: |
+          set -euo pipefail
+          LOG="${TF_LOG_PATH:-tf.log}"
+          LOCK_ID="$(grep -o 'tf_backend\.lock\.id=[a-f0-9-]\+' "$LOG" | tail -n1 | sed 's/.*=//')" || true
+          echo "Last seen lock id: ${LOCK_ID:-<none>}"
+          if [ -n "${LOCK_ID:-}" ]; then
+            terraform force-unlock -force "$LOCK_ID" || true
+          fi
