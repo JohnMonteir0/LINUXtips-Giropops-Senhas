@@ -80,16 +80,26 @@ resource "helm_release" "ingress-nginx" {
   values = [
     yamlencode({
       controller = {
+        # admission webhook
+        admissionWebhooks = {
+          enabled = true
+          patch   = { enabled = true }
+          # optional but explicit; controller serves webhook on 8443
+          port    = 8443
+        }
+
         service = {
           annotations = local.annotations
         }
       }
     })
   ]
+
   depends_on = [
     helm_release.aws_load_balancer_controller
   ]
 }
+
 
 ### EBS CSI Driver Install ###
 resource "helm_release" "ebs_csi_driver" {
