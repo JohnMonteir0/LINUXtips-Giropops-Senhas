@@ -83,7 +83,7 @@ observability:
       batch: {}
     exporters:
       otlphttp:
-        endpoint: "http://jaeger.giropops-senhas.svc.cluster.local:4318"
+        endpoint: "http://jaeger-collector.monitoring:4318"
       debug:
         verbosity: normal
       prometheus:
