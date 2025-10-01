@@ -688,7 +688,7 @@ resource "helm_release" "sonarqube" {
 
       persistence = {
         enabled      = true
-        storageClass = "gp3"
+        storageClass = "ebs-csi"
         accessMode   = "ReadWriteOnce"
         size         = "20Gi"
       }
