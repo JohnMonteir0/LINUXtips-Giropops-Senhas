@@ -686,6 +686,11 @@ resource "helm_release" "sonarqube" {
         port = 9000
       }
 
+      global = {
+        storageClass = "ebs-csi"
+      }
+
+      # SonarQube data PVC
       persistence = {
         enabled      = true
         storageClass = "ebs-csi"
@@ -715,6 +720,7 @@ resource "helm_release" "sonarqube" {
           persistence = {
             enabled      = true
             storageClass = "ebs-csi"
+            accessModes  = ["ReadWriteOnce"]
             size         = "20Gi"
           }
         }
