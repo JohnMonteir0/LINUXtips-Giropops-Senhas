@@ -2,17 +2,16 @@ name: "Terraform: Plan → Manual approval → Apply (main)"
 
 on:
   push:
-    branches: [ main ]   # run after a PR is merged
+    branches: [ main ]
     paths:
       - 'terraform/**'
       - '.github/workflows/infra.yml'
-  
   workflow_dispatch: {}
 
 permissions:
   id-token: write
   contents: read
-  issues: write          # needed so the approval action can open/comment issues
+  issues: write
 
 env:
   TF_LOG: INFO
@@ -21,7 +20,6 @@ env:
   APPROVERS: JohnMonteir0
   MIN_APPROVALS: 1
 
-# Never run two pipelines for the same branch/ref at once
 concurrency:
   group: tf-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -30,15 +28,15 @@ jobs:
   plan:
     name: "Terraform plan (saved as tfplan)"
     runs-on: ubuntu-latest
+    # <<< Run every shell step inside terraform/ >>>
     defaults:
       run:
         shell: bash
-        working-directory: .
+        working-directory: terraform
 
     steps:
       - uses: actions/checkout@v4
 
-      # <<< OIDC auth: assume the role via GitHub OIDC >>>
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -62,7 +60,6 @@ jobs:
       - name: Terraform plan (create binary plan + plaintext)
         run: |
           terraform plan -no-color -input=false -lock-timeout=2m -out=tfplan | tee tf-plan.out
-          # Keep a trimmed copy to embed in the approval issue (max body size safety)
           tail -n 500 tf-plan.out > tf-plan.tail.txt
 
       - name: Upload plan artifacts
@@ -70,9 +67,9 @@ jobs:
         with:
           name: tfplan-${{ github.run_id }}
           path: |
-            tfplan
-            tf-plan.out
-            tf-plan.tail.txt
+            terraform/tfplan
+            terraform/tf-plan.out
+            terraform/tf-plan.tail.txt
 
   approve:
     name: "Manual approval (issue-based)"
@@ -83,15 +80,15 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tfplan-${{ github.run_id }}
+          path: ./terraform   # ensure files land in terraform/
 
       - name: Read plan tail into env
         id: read_plan
         run: |
-          # Wrap in markdown code block for readability
           {
             echo 'PLAN_BODY<<EOF'
             echo '```'
-            sed -e 's/`/\\`/g' tf-plan.tail.txt
+            sed -e 's/`/\\`/g' terraform/tf-plan.tail.txt
             echo '```'
             echo 'EOF'
           } >> "$GITHUB_ENV"
@@ -110,7 +107,6 @@ jobs:
 
             **Plan (last ~500 lines):**
             ${{ env.PLAN_BODY }}
-# Docs: https://github.com/trstringer/manual-approval (keywords & behavior). :contentReference[oaicite:1]{index=1}
 
   apply:
     name: "Terraform apply (from saved plan)"
@@ -119,7 +115,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: .
+        working-directory: terraform
 
     steps:
       - uses: actions/checkout@v4
@@ -142,20 +138,20 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tfplan-${{ github.run_id }}
+          path: ./terraform
 
       - name: Apply the exact saved plan (with lock wait)
         run: terraform apply -no-color -input=false -lock-timeout=20m tfplan | tee tf-apply.out
 
-      # Best-effort diagnostics + auto-unlock on failure/cancel
       - name: Upload logs
         if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
           name: terraform-logs-${{ github.run_id }}
           path: |
-            tf.log
-            tf-plan.out
-            tf-apply.out
+            terraform/tf.log
+            terraform/tf-plan.out
+            terraform/tf-apply.out
 
       - name: Force-unlock on failure/cancel (best-effort)
         if: failure() || cancelled()
