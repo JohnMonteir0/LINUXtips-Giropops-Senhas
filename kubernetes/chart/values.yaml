@@ -8,9 +8,6 @@ deployments:
         targetPort: 5000
         name: "giropops-senhas-port"
         NodePort: 32500
-      - port: 8088
-        targetPort: 8088
-        name: "giropops-senhas-metrics"
     labels:
       app: "giropops-senhas"
       env: "labs"
@@ -22,7 +19,6 @@ deployments:
         memory: "256Mi"
         cpu: "500m"
     env:
-      # App telemetry identity + verbosity
       - name: OTEL_SERVICE_NAME
         value: "giropops-senhas"
       - name: OTEL_LOG_LEVEL
@@ -60,10 +56,6 @@ services:
         targetPort: 5000
         name: "app"
         serviceType: "ClusterIP"
-      - port: 5000
-        targetPort: 5000
-        name: "metrics"
-        serviceType: "ClusterIP"
     labels:
       app: "giropops-senhas"
       env: "labs"
@@ -87,39 +79,28 @@ observability:
             endpoint: 0.0.0.0:4317
           http:
             endpoint: 0.0.0.0:4318
-
     processors:
       batch: {}
-
     exporters:
-      # Ship traces to Jaeger (all-in-one) over OTLP/HTTP
       otlphttp:
         endpoint: "http://jaeger.giropops-senhas.svc.cluster.local:4318"
-
-      # Optional: see spans in Collector logs
       debug:
         verbosity: normal
-
-      # Collector metrics for Prometheus
       prometheus:
         endpoint: "0.0.0.0:8889"
-
     service:
       telemetry:
         logs:
           level: info
-
       pipelines:
         traces:
           receivers:  [otlp]
           processors: [batch]
           exporters:  [otlphttp, debug]
-
         metrics:
           receivers:  [otlp]
           processors: [batch]
           exporters:  [prometheus]
-
         logs:
           receivers:  [otlp]
           processors: [batch]
@@ -135,7 +116,6 @@ databases:
 monitoring:
   enabled: true
   serviceMonitors:
-    # App metrics
     - name: giropops-senhas
       namespace: giropops-senhas
       labels: { app: giropops-senhas, env: labs }
