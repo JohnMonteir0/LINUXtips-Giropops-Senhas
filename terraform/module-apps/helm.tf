@@ -661,6 +661,7 @@ resource "helm_release" "tempo" {
 }
 
 ### Sonarqube ###
+# Optional: generate a strong passcode (or use a TF var)
 resource "helm_release" "sonarqube" {
   name             = "sonarqube"
   namespace        = "sonarqube"
@@ -673,13 +674,13 @@ resource "helm_release" "sonarqube" {
 
   values = [
     yamlencode({
-      ## Service (ClusterIP; Ingress will expose it)
+      monitoringPasscode = var.db_password
+
       service = {
         type = "ClusterIP"
         port = 9000
       }
 
-      ## PVC for SonarQube data
       persistence = {
         enabled      = true
         storageClass = "gp3"
@@ -687,23 +688,17 @@ resource "helm_release" "sonarqube" {
         size         = "20Gi"
       }
 
-      ## Minimal resources (adjust as needed)
       resources = {
         requests = { cpu = "500m", memory = "2Gi" }
-        limits   = { cpu = "2", memory = "4Gi" }
+        limits   = { cpu = "2",    memory = "4Gi" }
       }
 
-      ## Kernel params SonarQube likes (vm.max_map_count, etc.)
-      initSysctl = {
-        enabled = true
-      }
+      initSysctl = { enabled = true }
 
-      ## Set external URL so links/emails are correct
       sonarProperties = {
         "sonar.core.serverBaseURL" = "https://sonarqube.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"
       }
 
-      ## PostgreSQL (convenient for now; for prod consider RDS)
       postgresql = {
         enabled = true
         auth = {
@@ -720,7 +715,6 @@ resource "helm_release" "sonarqube" {
         }
       }
 
-      ## Ingress via NGINX + cert-manager + external-dns
       ingress = {
         enabled          = true
         ingressClassName = "nginx"
@@ -743,15 +737,10 @@ resource "helm_release" "sonarqube" {
             hosts      = ["sonarqube.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"]
           }
         ]
-        values_sensitive = [
-          yamlencode({
-            monitoringPasscode = var.db_password
-          })
-        ]
-
       }
     })
   ]
+
   depends_on = [
     helm_release.ingress-nginx,
     helm_release.cert_manager,
@@ -759,6 +748,9 @@ resource "helm_release" "sonarqube" {
     helm_release.external_dns
   ]
 }
+
+
+
 
 
 
