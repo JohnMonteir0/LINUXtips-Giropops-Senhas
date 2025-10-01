@@ -706,7 +706,7 @@ resource "helm_release" "sonarqube" {
       initSysctl = { enabled = true }
 
       sonarProperties = {
-        "sonar.core.serverBaseURL" = "https://sonarqube.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"
+        "sonar.core.serverBaseURL" = "http://sonarqube.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"
       }
 
       postgresql = {
