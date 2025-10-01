@@ -675,6 +675,7 @@ resource "helm_release" "sonarqube" {
   values = [
     yamlencode({
       monitoringPasscode = var.db_password
+      community          = { enabled = true }
 
       service = {
         type = "ClusterIP"
@@ -690,7 +691,7 @@ resource "helm_release" "sonarqube" {
 
       resources = {
         requests = { cpu = "500m", memory = "2Gi" }
-        limits   = { cpu = "2",    memory = "4Gi" }
+        limits   = { cpu = "2", memory = "4Gi" }
       }
 
       initSysctl = { enabled = true }
