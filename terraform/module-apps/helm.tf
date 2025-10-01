@@ -98,8 +98,6 @@ resource "helm_release" "ebs_csi_driver" {
   chart      = "aws-ebs-csi-driver"
   namespace  = "kube-system"
   version    = "2.30.0"
-
-  # IRSA: only leave this false if you *already* created the SA with the IAM role
   set {
     name  = "controller.serviceAccount.create"
     value = "false"
@@ -716,7 +714,7 @@ resource "helm_release" "sonarqube" {
         primary = {
           persistence = {
             enabled      = true
-            storageClass = "gp3"
+            storageClass = "ebs-csi"
             size         = "20Gi"
           }
         }
