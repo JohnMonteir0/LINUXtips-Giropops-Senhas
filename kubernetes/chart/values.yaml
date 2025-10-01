@@ -28,7 +28,7 @@ deployments:
       - name: OTEL_RESOURCE_ATTRIBUTES
         value: "deployment.environment=labs"
       - name: OTEL_EXPORTER_OTLP_ENDPOINT
-        value: "otel-collector-opentelemetry-collector:4317"
+        value: "otel-collector-opentelemetry-collector.monitoring:4317"
       - name: OTEL_EXPORTER_OTLP_PROTOCOL
         value: "grpc"
       - name: OTEL_EXPORTER_OTLP_INSECURE
