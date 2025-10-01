@@ -283,100 +283,100 @@ resource "helm_release" "kube_prometheus_stack" {
   timeout          = 300
 
   values = [
-  yamlencode({
-    prometheus = {
-      # Ingress for the Prometheus UI
-      ingress = {
-        enabled          = true
-        ingressClassName = "nginx"
-        annotations = {
-          "nginx.ingress.kubernetes.io/force-ssl-redirect" = "false"
-          "nginx.ingress.kubernetes.io/backend-protocol"   = "HTTP"
-          "external-dns.alpha.kubernetes.io/hostname"      = "prometheus.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"
-          "cert-manager.io/cluster-issuer"                 = "letsencrypt-staging"
-        }
-        hosts = ["prometheus.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"]
-        paths = ["/"]
-        pathType = "Prefix"
-        tls = [{
-          hosts      = ["prometheus.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"]
-          secretName = "letsencrypt-staging"
-        }]
-      }
-
-      # Your existing prometheusSpec stays as-is
-      prometheusSpec = {
-        serviceMonitorSelector                  = {}
-        serviceMonitorNamespaceSelector         = {}
-        podMonitorSelector                      = {}
-        podMonitorNamespaceSelector             = {}
-        serviceMonitorSelectorNilUsesHelmValues = false
-        podMonitorSelectorNilUsesHelmValues     = false
-      }
-    }
-
-    grafana = {
-      # Ingress for Grafana
-      ingress = {
-        enabled          = true
-        ingressClassName = "nginx"
-        annotations = {
-          "nginx.ingress.kubernetes.io/force-ssl-redirect" = "false"
-          "nginx.ingress.kubernetes.io/backend-protocol"   = "HTTP"
-          "external-dns.alpha.kubernetes.io/hostname"      = "grafana.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"
-          "cert-manager.io/cluster-issuer"                 = "letsencrypt-staging"
-        }
-        hosts = ["grafana.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"]
-        path  = "/"
-        pathType = "Prefix"
-        tls = [{
-          hosts      = ["grafana.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"]
-          secretName = "letsencrypt-staging"
-        }]
-      }
-
-      # Grafana datasources
-      additionalDataSources = [
-        {
-          name      = "Loki"
-          type      = "loki"
-          access    = "proxy"
-          url       = "http://loki.monitoring.svc.cluster.local:3100"
-          isDefault = false
-          jsonData = {
-            maxLines = 1000
-            timeout  = 60
-            derivedFields = [
-              {
-                name         = "trace_id"
-                matcherRegex = "trace_id=(\\w+)"
-                url          = "$${__url}/explore?orgId=1&left=[\"now-15m\",\"now\",\"tempo\",{\"query\":\"$${__value.raw}\"}]"
-              }
-            ]
+    yamlencode({
+      prometheus = {
+        # Ingress for the Prometheus UI
+        ingress = {
+          enabled          = true
+          ingressClassName = "nginx"
+          annotations = {
+            "nginx.ingress.kubernetes.io/force-ssl-redirect" = "false"
+            "nginx.ingress.kubernetes.io/backend-protocol"   = "HTTP"
+            "external-dns.alpha.kubernetes.io/hostname"      = "prometheus.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"
+            "cert-manager.io/cluster-issuer"                 = "letsencrypt-staging"
           }
-        },
-        {
-          name     = "Tempo"
-          type     = "tempo"
-          access   = "proxy"
-          url      = "http://tempo.monitoring.svc.cluster.local:3200"
-          editable = true
-          jsonData = {
-            nodeGraph = { enabled = true }
-            tracesToLogs = {
-              datasourceUid      = "Loki"
-              spanStartTimeShift = "1h"
-              spanEndTimeShift   = "1h"
-              filterByTraceID    = true
-              filterBySpanID     = false
-              tags               = ["job", "instance", "pod", "namespace", "container"]
+          hosts    = ["prometheus.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"]
+          paths    = ["/"]
+          pathType = "Prefix"
+          tls = [{
+            hosts      = ["prometheus.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"]
+            secretName = "letsencrypt-staging"
+          }]
+        }
+
+        # Your existing prometheusSpec stays as-is
+        prometheusSpec = {
+          serviceMonitorSelector                  = {}
+          serviceMonitorNamespaceSelector         = {}
+          podMonitorSelector                      = {}
+          podMonitorNamespaceSelector             = {}
+          serviceMonitorSelectorNilUsesHelmValues = false
+          podMonitorSelectorNilUsesHelmValues     = false
+        }
+      }
+
+      grafana = {
+        # Ingress for Grafana
+        ingress = {
+          enabled          = true
+          ingressClassName = "nginx"
+          annotations = {
+            "nginx.ingress.kubernetes.io/force-ssl-redirect" = "false"
+            "nginx.ingress.kubernetes.io/backend-protocol"   = "HTTP"
+            "external-dns.alpha.kubernetes.io/hostname"      = "grafana.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"
+            "cert-manager.io/cluster-issuer"                 = "letsencrypt-staging"
+          }
+          hosts    = ["grafana.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"]
+          path     = "/"
+          pathType = "Prefix"
+          tls = [{
+            hosts      = ["grafana.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"]
+            secretName = "letsencrypt-staging"
+          }]
+        }
+
+        # Grafana datasources
+        additionalDataSources = [
+          {
+            name      = "Loki"
+            type      = "loki"
+            access    = "proxy"
+            url       = "http://loki.monitoring.svc.cluster.local:3100"
+            isDefault = false
+            jsonData = {
+              maxLines = 1000
+              timeout  = 60
+              derivedFields = [
+                {
+                  name         = "trace_id"
+                  matcherRegex = "trace_id=(\\w+)"
+                  url          = "$${__url}/explore?orgId=1&left=[\"now-15m\",\"now\",\"tempo\",{\"query\":\"$${__value.raw}\"}]"
+                }
+              ]
+            }
+          },
+          {
+            name     = "Tempo"
+            type     = "tempo"
+            access   = "proxy"
+            url      = "http://tempo.monitoring.svc.cluster.local:3200"
+            editable = true
+            jsonData = {
+              nodeGraph = { enabled = true }
+              tracesToLogs = {
+                datasourceUid      = "Loki"
+                spanStartTimeShift = "1h"
+                spanEndTimeShift   = "1h"
+                filterByTraceID    = true
+                filterBySpanID     = false
+                tags               = ["job", "instance", "pod", "namespace", "container"]
+              }
             }
           }
-        }
-      ]
-    }
-  })
- ]
+        ]
+      }
+    })
+  ]
   depends_on = [
     helm_release.aws_load_balancer_controller,
     helm_release.ingress-nginx,
