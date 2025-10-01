@@ -732,7 +732,7 @@ resource "helm_release" "sonarqube" {
         annotations = {
           "external-dns.alpha.kubernetes.io/hostname"      = "sonarqube.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"
           "cert-manager.io/cluster-issuer"                 = "letsencrypt-staging"
-          "nginx.ingress.kubernetes.io/force-ssl-redirect" = "true"
+          "nginx.ingress.kubernetes.io/force-ssl-redirect" = "false"
           "nginx.ingress.kubernetes.io/backend-protocol"   = "HTTP"
         }
         hosts = [
