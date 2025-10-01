@@ -708,7 +708,7 @@ resource "helm_release" "sonarqube" {
         enabled = true
         auth = {
           username = var.db_username
-          password = var.db_username
+          password = var.db_password
           database = "sonarqube"
         }
         primary = {
@@ -743,6 +743,12 @@ resource "helm_release" "sonarqube" {
             hosts      = ["sonarqube.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"]
           }
         ]
+        values_sensitive = [
+          yamlencode({
+            monitoringPasscode = var.db_password
+          })
+        ]
+
       }
     })
   ]
