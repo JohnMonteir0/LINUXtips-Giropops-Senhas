@@ -99,11 +99,11 @@ resource "helm_release" "ebs_csi_driver" {
   namespace  = "kube-system"
   version    = "2.30.0"
 
+  # IRSA: only leave this false if you *already* created the SA with the IAM role
   set {
     name  = "controller.serviceAccount.create"
     value = "false"
   }
-
   set {
     name  = "controller.serviceAccount.name"
     value = "ebs-csi-controller-sa"
@@ -113,25 +113,23 @@ resource "helm_release" "ebs_csi_driver" {
     name  = "enableVolumeScheduling"
     value = "true"
   }
-
   set {
     name  = "enableVolumeResizing"
     value = "true"
   }
-
   set {
     name  = "enableVolumeSnapshot"
     value = "true"
   }
 
-  # storageClasses[0]
+  # StorageClass #0
   set {
     name  = "storageClasses[0].name"
     value = "ebs-csi"
   }
   set {
     name  = "storageClasses[0].annotations.storageclass\\.kubernetes\\.io/is-default-class"
-    value = "\"true\"" # note the extra quotes inside
+    value = "true"
   }
   set {
     name  = "storageClasses[0].volumeBindingMode"
@@ -142,12 +140,20 @@ resource "helm_release" "ebs_csi_driver" {
     value = "Delete"
   }
   set {
+    name  = "storageClasses[0].allowVolumeExpansion"
+    value = "true"
+  }
+  set {
     name  = "storageClasses[0].parameters.encrypted"
-    value = "\"true\""
+    value = "true"
   }
   set {
     name  = "storageClasses[0].parameters.type"
     value = "gp3"
+  }
+  set {
+    name  = "storageClasses[0].parameters.fsType"
+    value = "ext4"
   }
 
   depends_on = [
