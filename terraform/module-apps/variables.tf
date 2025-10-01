@@ -33,3 +33,17 @@ variable "public_subnet_ids_csv" {
   type    = string
   default = ""
 }
+
+variable "db_username" {
+  description = "Sonarqube username"
+  type        = string
+  sensitive   = true
+  default     = "sonarqube"
+}
+
+variable "db_password" {
+  description = "Sonarqube password"
+  type        = string
+  sensitive   = true
+  default     = "sonarqube"
+}

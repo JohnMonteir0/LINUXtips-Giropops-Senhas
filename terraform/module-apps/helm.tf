@@ -660,6 +660,101 @@ resource "helm_release" "tempo" {
   ]
 }
 
+### Sonarqube ###
+resource "helm_release" "sonarqube" {
+  name             = "sonarqube"
+  namespace        = "sonarqube"
+  create_namespace = true
+  repository       = "https://SonarSource.github.io/helm-chart-sonarqube"
+  chart            = "sonarqube"
+  version          = "2025.5.0"
+  timeout          = 300
+  atomic           = true
+
+  values = [
+    yamlencode({
+      ## Service (ClusterIP; Ingress will expose it)
+      service = {
+        type = "ClusterIP"
+        port = 9000
+      }
+
+      ## PVC for SonarQube data
+      persistence = {
+        enabled      = true
+        storageClass = "gp3"
+        accessMode   = "ReadWriteOnce"
+        size         = "20Gi"
+      }
+
+      ## Minimal resources (adjust as needed)
+      resources = {
+        requests = { cpu = "500m", memory = "2Gi" }
+        limits   = { cpu = "2", memory = "4Gi" }
+      }
+
+      ## Kernel params SonarQube likes (vm.max_map_count, etc.)
+      initSysctl = {
+        enabled = true
+      }
+
+      ## Set external URL so links/emails are correct
+      sonarProperties = {
+        "sonar.core.serverBaseURL" = "https://sonarqube.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"
+      }
+
+      ## PostgreSQL (convenient for now; for prod consider RDS)
+      postgresql = {
+        enabled = true
+        auth = {
+          username = var.db_username
+          password = var.db_username
+          database = "sonarqube"
+        }
+        primary = {
+          persistence = {
+            enabled      = true
+            storageClass = "gp3"
+            size         = "20Gi"
+          }
+        }
+      }
+
+      ## Ingress via NGINX + cert-manager + external-dns
+      ingress = {
+        enabled          = true
+        ingressClassName = "nginx"
+        annotations = {
+          "external-dns.alpha.kubernetes.io/hostname"      = "sonarqube.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"
+          "cert-manager.io/cluster-issuer"                 = "letsencrypt-staging"
+          "nginx.ingress.kubernetes.io/force-ssl-redirect" = "true"
+          "nginx.ingress.kubernetes.io/backend-protocol"   = "HTTP"
+        }
+        hosts = [
+          {
+            name     = "sonarqube.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"
+            path     = "/"
+            pathType = "Prefix"
+          }
+        ]
+        tls = [
+          {
+            secretName = "letsencrypt-staging"
+            hosts      = ["sonarqube.${data.aws_caller_identity.current.account_id}.realhandsonlabs.net"]
+          }
+        ]
+      }
+    })
+  ]
+  depends_on = [
+    helm_release.ingress-nginx,
+    helm_release.cert_manager,
+    helm_release.aws_load_balancer_controller,
+    helm_release.external_dns
+  ]
+}
+
+
 
 
 
