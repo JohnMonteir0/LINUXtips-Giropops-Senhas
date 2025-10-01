@@ -22,7 +22,7 @@ resource "aws_iam_role" "gh_actions_role" {
         "Action" : "sts:AssumeRoleWithWebIdentity",
         "Condition" : {
           "StringEquals" : {
-            "token.actions.githubusercontent.com:sub" : "repo:JohnMonteir0/eks-with-cilium:ref:refs/heads/main"
+            "token.actions.githubusercontent.com:sub" : "repo:JohnMonteir0/LINUXtips-Giropops-Senhas:ref:refs/heads/main"
             "token.actions.githubusercontent.com:aud" : "sts.amazonaws.com"
           }
         }
