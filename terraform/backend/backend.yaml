@@ -1,0 +1,82 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Terraform backend resources WITHOUT KMS (S3 + DynamoDB lock table)
+
+Parameters:
+  BucketName:
+    Type: String
+    Default: ""
+    Description: "Optional: predefine the S3 bucket name. Leave empty to auto-generate."
+  DynamoDBTableName:
+    Type: String
+    Default: ""
+    Description: "Optional: predefine the DynamoDB table name. Leave empty to auto-generate."
+  Tags:
+    Type: CommaDelimitedList
+    Default: "Project=Terraform,ManagedBy=CloudFormation"
+    Description: "Comma-delimited list of Key=Value tags."
+
+Conditions:
+  UseCustomBucketName: !Not [!Equals [!Ref BucketName, ""]]
+  UseCustomTableName:  !Not [!Equals [!Ref DynamoDBTableName, ""]]
+
+Resources:
+  StateBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !If [UseCustomBucketName, !Ref BucketName, !Ref "AWS::NoValue"]
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              # IMPORTANT: AES256 means SSE-S3 (no KMS)
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: AbortIncompleteMultipart
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+      Tags:
+        # Convert the CommaDelimitedList of "K=V" into CFN tag objects
+        - Key: Project
+          Value: Terraform
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  LockTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !If [UseCustomTableName, !Ref DynamoDBTableName, !Ref "AWS::NoValue"]
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: LockID
+          AttributeType: S
+      KeySchema:
+        - AttributeName: LockID
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      # NOTE: No SSESpecification set -> uses AWS-owned key (no customer KMS)
+
+Outputs:
+  S3Bucket:
+    Value: !Ref StateBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-S3Bucket"
+  DynamoDBTable:
+    Value: !Ref LockTable
+    Export:
+      Name: !Sub "${AWS::StackName}-DynamoDBTable"
