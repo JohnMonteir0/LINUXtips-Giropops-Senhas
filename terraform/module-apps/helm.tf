@@ -108,66 +108,37 @@ resource "helm_release" "ebs_csi_driver" {
   chart      = "aws-ebs-csi-driver"
   namespace  = "kube-system"
   version    = "2.30.0"
-  set {
-    name  = "controller.serviceAccount.create"
-    value = "false"
-  }
-  set {
-    name  = "controller.serviceAccount.name"
-    value = "ebs-csi-controller-sa"
-  }
 
-  set {
-    name  = "enableVolumeScheduling"
-    value = "true"
-  }
-  set {
-    name  = "enableVolumeResizing"
-    value = "true"
-  }
-  set {
-    name  = "enableVolumeSnapshot"
-    value = "true"
-  }
+  values = [yamlencode({
+    controller = {
+      serviceAccount = {
+        create = false
+        name   = "ebs-csi-controller-sa"
+      }
+    }
+    enableVolumeScheduling = true
+    enableVolumeResizing   = true
+    enableVolumeSnapshot   = true
 
-  # StorageClass #0
-  set {
-    name  = "storageClasses[0].name"
-    value = "ebs-csi"
-  }
-  set {
-    name  = "storageClasses[0].annotations.storageclass\\.kubernetes\\.io/is-default-class"
-    value = "true"
-  }
-  set {
-    name  = "storageClasses[0].volumeBindingMode"
-    value = "WaitForFirstConsumer"
-  }
-  set {
-    name  = "storageClasses[0].reclaimPolicy"
-    value = "Delete"
-  }
-  set {
-    name  = "storageClasses[0].allowVolumeExpansion"
-    value = "true"
-  }
-  set {
-    name  = "storageClasses[0].parameters.encrypted"
-    value = "true"
-  }
-  set {
-    name  = "storageClasses[0].parameters.type"
-    value = "gp3"
-  }
-  set {
-    name  = "storageClasses[0].parameters.fsType"
-    value = "ext4"
-  }
+    storageClasses = [{
+      name               = "ebs-csi"
+      annotations        = {
+        "storageclass.kubernetes.io/is-default-class" = "true"
+      }
+      volumeBindingMode   = "WaitForFirstConsumer"
+      reclaimPolicy       = "Delete"
+      allowVolumeExpansion = true
+      parameters = {
+        encrypted = "true"
+        type      = "gp3"
+        fsType    = "ext4"
+      }
+    }]
+  })]
 
-  depends_on = [
-    aws_iam_role_policy_attachment.attach_ebs_csi_policy
-  ]
+  depends_on = [aws_iam_role_policy_attachment.attach_ebs_csi_policy]
 }
+
 
 ### Cert Manager ###
 resource "helm_release" "cert_manager" {
