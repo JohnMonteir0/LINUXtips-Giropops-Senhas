@@ -2,12 +2,13 @@ name: "Application: Pipeline"
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, staging, stg/*, develop, dev/* ]
     paths:
       - 'app.py'
       - 'Dockerfile'
       - 'requirements.txt'
       - '.github/workflows/app.yml'
+      - 'kubernetes/chart/**'
   workflow_dispatch: {}
 
 env:
@@ -22,16 +23,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # -----------------------------
+  # 1) Build (no push) + Push job
+  # -----------------------------
   build_and_push:
     runs-on: ubuntu-latest
+
     outputs:
-      image_tag: ${{ steps.meta.outputs.version }}   # for reference if needed
+      short_sha: ${{ steps.compute.outputs.short_sha }}
+      env_name:  ${{ steps.compute.outputs.env_name }}
+      image_tag: ${{ steps.meta.outputs.version }}
+
     steps:
       - uses: actions/checkout@v4
 
-      # Short SHA for image tag (7 chars)
-      - name: Compute short SHA
-        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+      # Decide environment from branch and compute short SHA
+      - name: Compute env + short SHA
+        id: compute
+        run: |
+          REF="${GITHUB_REF#refs/heads/}"
+          if [[ "$REF" == "main" ]]; then ENV=prod
+          elif [[ "$REF" == "staging" || "$REF" == stg/* ]]; then ENV=stg
+          else ENV=dev; fi
+          echo "env_name=$ENV" >> $GITHUB_OUTPUT
+          echo "short_sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
       - uses: docker/setup-buildx-action@v3
 
@@ -41,15 +56,29 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Tags: <env>-<shortsha> + latest for dev only
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=dev-${{ env.SHORT_SHA }}
-            type=raw,value=latest
+            type=raw,value=${{ steps.compute.outputs.env_name }}-${{ steps.compute.outputs.short_sha }}
+            # give "latest" only to dev env:
+            type=raw,value=latest,enable=${{ steps.compute.outputs.env_name == 'dev' }}
 
+      # 🔹 Build only (no push) — smoke-test Dockerfile
+      - name: Build (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          tags: ${{ env.IMAGE_NAME }}:ci-check
+          cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
+
+      # 🔹 Push image with final tags
       - name: Build & Push
         uses: docker/build-push-action@v6
         with:
@@ -60,23 +89,27 @@ jobs:
           cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
           cache-to: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
 
+  # -----------------------------
+  # 2) Sonar (tests + coverage + gate)
+  # -----------------------------
   sonar_scan:
     runs-on: ubuntu-latest
     needs: build_and_push
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.11'
 
-      # Install runtime deps (best-effort) + test deps for coverage
       - name: Install deps
         run: |
           pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
           pip install pytest pytest-cov coverage
 
+      # Disable OpenTelemetry during CI (no collector)
       - name: Test (pytest) + coverage
         env:
           OTEL_SDK_DISABLED: "true"
@@ -85,7 +118,6 @@ jobs:
         run: |
           pytest --maxfail=1 --disable-warnings -q --cov=. --cov-branch --cov-report=xml
 
-      # Ensure sonar-project.properties has the coverage mapping
       - name: Ensure sonar-project.properties has coverage path
         run: |
           PROP_FILE="sonar-project.properties"
@@ -108,10 +140,123 @@ jobs:
           args: >
             -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
 
-      # Fail the job if the Quality Gate fails
       - name: Wait for Quality Gate
         uses: SonarSource/sonarqube-quality-gate-action@v1.1.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+  # -----------------------------
+  # 3) Argo CD deployment
+  # -----------------------------
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [build_and_push, sonar_scan]
+    if: ${{ needs.sonar_scan.result == 'success' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute env + tag
+        id: compute
+        run: |
+          REF="${GITHUB_REF#refs/heads/}"
+          if [[ "$REF" == "main" ]]; then ENV=prod
+          elif [[ "$REF" == "staging" || "$REF" == stg/* ]]; then ENV=stg
+          else ENV=dev; fi
+          echo "env_name=$ENV" >> $GITHUB_OUTPUT
+          echo "short_sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          echo "image_tag=${ENV}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          install -m 755 argocd /usr/local/bin/argocd
+          argocd version --client
+
+      # Login with username/password
+      - name: ArgoCD login (normalize endpoint)
+        env:
+          ARGOCD_SERVER:   ${{ secrets.ARGOCD_SERVER }}   # can be with or without scheme; both are okay
+          ARGOCD_USERNAME: ${{ secrets.ARGOCD_USERNAME }}
+          ARGOCD_PASSWORD: ${{ secrets.ARGOCD_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RAW="${ARGOCD_SERVER}"
+          SCHEME="https"
+          HOSTPORT="$RAW"
+
+          # Strip scheme if present and remember which one it was
+          if [[ "$RAW" =~ ^https:// ]]; then
+            SCHEME="https"
+            HOSTPORT="${RAW#https://}"
+          elif [[ "$RAW" =~ ^http:// ]]; then
+            SCHEME="http"
+            HOSTPORT="${RAW#http://}"
+          fi
+
+          # Drop any trailing slash
+          HOSTPORT="${HOSTPORT%/}"
+
+          # If no explicit port, add default by scheme
+          if [[ "$HOSTPORT" != *:* ]]; then
+            if [[ "$SCHEME" == "http" ]]; then
+              HOSTPORT="${HOSTPORT}:80"
+            else
+              HOSTPORT="${HOSTPORT}:443"
+            fi
+          fi
+
+          # Flags: grpc-web for ingress; plaintext for http; insecure for self-signed/LetsEncrypt staging
+          FLAGS=( --grpc-web )
+          if [[ "$SCHEME" == "http" ]]; then
+            FLAGS+=( --plaintext )
+          else
+            FLAGS+=( --insecure )
+          fi
+
+          echo "Logging into ArgoCD at: $HOSTPORT (scheme=$SCHEME) with flags: ${FLAGS[*]}"
+          argocd login "$HOSTPORT" "${FLAGS[@]}" \
+            --username "$ARGOCD_USERNAME" \
+            --password "$ARGOCD_PASSWORD"
+
+
+      # Create or upsert the Application pointing at Helm chart
+      - name: Create or update Application
+        env:
+          APP_NAME: ${{ vars.APP_NAME || 'giropops-senhas' }}
+          DEST_SERVER: ${{ vars.ARGOCD_DEST_SERVER || 'https://kubernetes.default.svc' }}
+          DEST_NAMESPACE: ${{ vars.ARGOCD_DEST_NAMESPACE || 'giropops-senhas' }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          APP_EXISTS=$(argocd app get "$APP_NAME" >/dev/null 2>&1 && echo yes || echo no)
+
+          if [ "$APP_EXISTS" = "no" ]; then
+            argocd app create "$APP_NAME" \
+              --repo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" \
+              --revision "$GITHUB_REF_NAME" \
+              --path kubernetes/chart \
+              --dest-server "$DEST_SERVER" \
+              --dest-namespace "$DEST_NAMESPACE" \
+              --helm-set image.repository="$IMAGE_NAME" \
+              --helm-set image.tag="${{ steps.compute.outputs.image_tag }}" \
+              --sync-policy automated \
+              --auto-prune
+          else
+            # update chart values (image tag) and branch revision
+            argocd app set "$APP_NAME" \
+              --revision "$GITHUB_REF_NAME" \
+              -p image.repository="$IMAGE_NAME" \
+              -p image.tag="${{ steps.compute.outputs.image_tag }}"
+          fi
+
+      - name: Sync & wait
+        env:
+          APP_NAME: ${{ vars.APP_NAME || 'giropops-senhas' }}
+        run: |
+          argocd app sync "$APP_NAME" --prune
+          argocd app wait "$APP_NAME" --health --sync --timeout 600
 
