@@ -175,14 +175,53 @@ jobs:
           argocd version --client
 
       # Login with username/password
-      - name: ArgoCD login
+      - name: ArgoCD login (normalize endpoint)
         env:
-          ARGOCD_SERVER:   ${{ secrets.ARGOCD_SERVER }}
+          ARGOCD_SERVER:   ${{ secrets.ARGOCD_SERVER }}   # can be with or without scheme; both are okay
           ARGOCD_USERNAME: ${{ secrets.ARGOCD_USERNAME }}
           ARGOCD_PASSWORD: ${{ secrets.ARGOCD_PASSWORD }}
+        shell: bash
         run: |
-          # --insecure if you have a staging cert; remove when you use trusted certs
-          argocd login "$ARGOCD_SERVER" --username "$ARGOCD_USERNAME" --password "$ARGOCD_PASSWORD" --insecure
+          set -euo pipefail
+
+          RAW="${ARGOCD_SERVER}"
+          SCHEME="https"
+          HOSTPORT="$RAW"
+
+          # Strip scheme if present and remember which one it was
+          if [[ "$RAW" =~ ^https:// ]]; then
+            SCHEME="https"
+            HOSTPORT="${RAW#https://}"
+          elif [[ "$RAW" =~ ^http:// ]]; then
+            SCHEME="http"
+            HOSTPORT="${RAW#http://}"
+          fi
+
+          # Drop any trailing slash
+          HOSTPORT="${HOSTPORT%/}"
+
+          # If no explicit port, add default by scheme
+          if [[ "$HOSTPORT" != *:* ]]; then
+            if [[ "$SCHEME" == "http" ]]; then
+              HOSTPORT="${HOSTPORT}:80"
+            else
+              HOSTPORT="${HOSTPORT}:443"
+            fi
+          fi
+
+          # Flags: grpc-web for ingress; plaintext for http; insecure for self-signed/LetsEncrypt staging
+          FLAGS=( --grpc-web )
+          if [[ "$SCHEME" == "http" ]]; then
+            FLAGS+=( --plaintext )
+          else
+            FLAGS+=( --insecure )
+          fi
+
+          echo "Logging into ArgoCD at: $HOSTPORT (scheme=$SCHEME) with flags: ${FLAGS[*]}"
+          argocd login "$HOSTPORT" "${FLAGS[@]}" \
+            --username "$ARGOCD_USERNAME" \
+            --password "$ARGOCD_PASSWORD"
+
 
       # Create or upsert the Application pointing at Helm chart
       - name: Create or update Application
