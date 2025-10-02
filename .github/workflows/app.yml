@@ -2,7 +2,7 @@ name: "Application: Pipeline"
 
 on:
   push:
-    branches: [ main, staging, staging/*, develop, dev/* ]
+    branches: [ main, staging, stg/*, develop, dev/* ]
     paths:
       - 'app.py'
       - 'Dockerfile'
