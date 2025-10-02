@@ -1,4 +1,4 @@
-name: App CI (Build → Push and Scan separate)
+name: "Application: Pipeline"
 
 on:
   push:
@@ -8,12 +8,10 @@ on:
       - 'Dockerfile'
       - 'requirements.txt'
       - '.github/workflows/app.yml'
-
   workflow_dispatch: {}
 
 env:
   IMAGE_NAME: johnmonteir0/linuxtips-giropops-senhas
-  IMAGE_TAG: dev-${{ github.sha }}
 
 permissions:
   contents: read
@@ -27,9 +25,13 @@ jobs:
   build_and_push:
     runs-on: ubuntu-latest
     outputs:
-      image_tag: ${{ env.IMAGE_TAG }}
+      image_tag: ${{ steps.meta.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+
+      # Short SHA for image tag (7 chars)
+      - name: Compute short SHA
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -45,7 +47,7 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=${{ env.IMAGE_TAG }}
+            type=raw,value=dev-${{ env.SHORT_SHA }}
             type=raw,value=latest
 
       - name: Build & Push
@@ -63,14 +65,49 @@ jobs:
     needs: build_and_push
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install deps (best-effort)
+
+      # Install runtime deps (best-effort) + test deps for coverage
+      - name: Install deps
         run: |
+          pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
+          pip install pytest pytest-cov coverage
+
+      # Run tests and produce coverage.xml for Sonar
+      - name: Test (pytest) + coverage
+        run: |
+          pytest --maxfail=1 --disable-warnings -q --cov=. --cov-report=xml
+
+      # Ensure sonar-project.properties has the coverage mapping
+      - name: Ensure sonar-project.properties has coverage path
+        run: |
+          PROP_FILE="sonar-project.properties"
+          if [ ! -f "$PROP_FILE" ]; then
+            echo "sonar.projectKey=giropops-senhas" > "$PROP_FILE"
+            echo "sonar.sources=." >> "$PROP_FILE"
+          fi
+          # add/replace coverage path
+          if grep -q '^sonar.python.coverage.reportPaths=' "$PROP_FILE"; then
+            sed -i 's|^sonar.python.coverage.reportPaths=.*|sonar.python.coverage.reportPaths=coverage.xml|' "$PROP_FILE"
+          else
+            echo "sonar.python.coverage.reportPaths=coverage.xml" >> "$PROP_FILE"
+          fi
+
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v2
         env:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-          SONAR_TOKEN:    ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
+
+      # Fail the job if the Quality Gate fails
+      - name: Wait for Quality Gate
+        uses: SonarSource/sonarqube-quality-gate-action@v1.1.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
