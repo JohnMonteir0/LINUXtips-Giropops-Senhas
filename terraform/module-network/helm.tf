@@ -49,7 +49,7 @@ resource "helm_release" "cilium" {
   # --- Filter: only use your pod subnets (100.64.0.0/16) ---
   set {
     name  = "eni.subnetTagsFilter[0]"
-    value = "cilium-pod-subnet=true"
+    value = "giropops-pod-subnet=true"
   }
 
   # Optional: higher pod density

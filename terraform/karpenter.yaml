@@ -13,15 +13,15 @@ spec:
         encrypted: true
         iops: 3000
         deleteOnTermination: true
-  role: cilium
+  role: giropops
   subnetSelectorTerms:
     - tags:
-        karpenter.sh/discovery: cilium
+        karpenter.sh/discovery: giropops
   securityGroupSelectorTerms:
     - tags:
-        karpenter.sh/discovery: cilium
+        karpenter.sh/discovery: giropops
   tags:
-    karpenter.sh/discovery: cilium
+    karpenter.sh/discovery: giropops
 ---
 apiVersion: karpenter.sh/v1
 kind: NodePool
@@ -46,7 +46,7 @@ spec:
           operator: In
           values: ["on-demand"]
       startupTaints:
-        - key: node.cilium.io/agent-not-ready
+        - key: node.giropops.io/agent-not-ready
           value: "true"
           effect: NoSchedule
   limits:
