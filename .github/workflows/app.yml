@@ -25,7 +25,7 @@ jobs:
   build_and_push:
     runs-on: ubuntu-latest
     outputs:
-      image_tag: ${{ steps.meta.outputs.version }}
+      image_tag: ${{ steps.meta.outputs.version }}   # for reference if needed
     steps:
       - uses: actions/checkout@v4
 
@@ -77,10 +77,13 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
           pip install pytest pytest-cov coverage
 
-      # Run tests and produce coverage.xml for Sonar
       - name: Test (pytest) + coverage
+        env:
+          OTEL_SDK_DISABLED: "true"
+          OTEL_TRACES_EXPORTER: "none"
+          OTEL_LOG_LEVEL: "error"
         run: |
-          pytest --maxfail=1 --disable-warnings -q --cov=. --cov-report=xml
+          pytest --maxfail=1 --disable-warnings -q --cov=. --cov-branch --cov-report=xml
 
       # Ensure sonar-project.properties has the coverage mapping
       - name: Ensure sonar-project.properties has coverage path
@@ -90,7 +93,6 @@ jobs:
             echo "sonar.projectKey=giropops-senhas" > "$PROP_FILE"
             echo "sonar.sources=." >> "$PROP_FILE"
           fi
-          # add/replace coverage path
           if grep -q '^sonar.python.coverage.reportPaths=' "$PROP_FILE"; then
             sed -i 's|^sonar.python.coverage.reportPaths=.*|sonar.python.coverage.reportPaths=coverage.xml|' "$PROP_FILE"
           else
@@ -101,6 +103,7 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@v2
         env:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN:    ${{ secrets.SONAR_TOKEN }}
         with:
           args: >
             -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
@@ -111,3 +114,4 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
