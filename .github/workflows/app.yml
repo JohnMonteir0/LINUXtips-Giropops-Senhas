@@ -1,7 +1,5 @@
 name: "Application: Pipeline"
 
-name: App CI (Build → Push → Sonar → ArgoCD)
-
 on:
   push:
     branches: [ main, staging, staging/*, develop, dev/* ]
