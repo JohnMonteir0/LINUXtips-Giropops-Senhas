@@ -85,7 +85,7 @@ resource "helm_release" "ingress-nginx" {
           enabled = true
           patch   = { enabled = true }
           # optional but explicit; controller serves webhook on 8443
-          port    = 8443
+          port = 8443
         }
 
         service = {

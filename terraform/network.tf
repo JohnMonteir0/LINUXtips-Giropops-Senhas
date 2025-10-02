@@ -57,9 +57,9 @@ resource "aws_subnet" "pods" {
   tags = merge(
     local.tags,
     {
-      Name                                        = "cilium-pod-${each.key}"
+      Name                                        = "giropops-pod-${each.key}"
       "kubernetes.io/cluster/${var.cluster_name}" = "shared"
-      "cilium-pod-subnet"                         = "true"
+      "giropops-pod-subnet"                       = "true"
     }
   )
 }
