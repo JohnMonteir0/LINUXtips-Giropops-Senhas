@@ -760,7 +760,8 @@ resource "helm_release" "sonarqube" {
     helm_release.ingress-nginx,
     helm_release.cert_manager,
     helm_release.aws_load_balancer_controller,
-    helm_release.external_dns
+    helm_release.external_dns,
+    helm_release.ebs_csi_driver
   ]
 }
 

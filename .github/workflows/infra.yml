@@ -1,4 +1,4 @@
-name: "Terraform: Plan → Manual approval → Apply (main)"
+name: "Terraform: Infrastructure Pipeline"
 
 on:
   push:
