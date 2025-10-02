@@ -24,7 +24,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "terraform-backend-statebucket-inhanzzb6k9o"
+    bucket         = "terraform-backend-statebucket-8rxfafffeiyh"
     key            = "terraform.tfstate"
     region         = "us-east-1"
     dynamodb_table = "terraform-backend-LockTable-1UGBGQPTDH765"
@@ -63,5 +63,6 @@ provider "kubectl" {
     args        = ["eks", "get-token", "--cluster-name", module.eks_bottlerocket.cluster_name]
   }
 }
+
 
 
