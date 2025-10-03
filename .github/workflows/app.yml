@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   # -----------------------------
-  # 1) Build (no push) + Push job
+  # Build (no push) + Push job
   # -----------------------------
   build_and_push:
     runs-on: ubuntu-latest
@@ -90,7 +90,7 @@ jobs:
           cache-to: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
 
   # -----------------------------
-  # 2) Sonar (tests + coverage + gate)
+  # Sonar (tests + coverage + gate)
   # -----------------------------
   sonar_scan:
     runs-on: ubuntu-latest
@@ -147,7 +147,7 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
   # -----------------------------
-  # 3) Argo CD deployment
+  # Argo CD deployment
   # -----------------------------
   deploy:
     runs-on: ubuntu-latest
@@ -157,16 +157,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Compute env + tag
+      - name: Compute env + tag + namespace + app name
         id: compute
         run: |
           REF="${GITHUB_REF#refs/heads/}"
           if [[ "$REF" == "main" ]]; then ENV=prod
           elif [[ "$REF" == "staging" || "$REF" == stg/* ]]; then ENV=stg
           else ENV=dev; fi
-          echo "env_name=$ENV" >> $GITHUB_OUTPUT
-          echo "short_sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          case "$ENV" in
+            dev) NS="dev-giropops-senhas";;
+            stg) NS="stg-giropops-senhas";;
+            prod) NS="prd-giropops-senhas";;
+          esac
+          echo "env_name=$ENV"                >> $GITHUB_OUTPUT
+          echo "short_sha=${GITHUB_SHA::7}"   >> $GITHUB_OUTPUT
           echo "image_tag=${ENV}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          echo "namespace=$NS"                >> $GITHUB_OUTPUT
+          echo "app_name=giropops-senhas-$ENV" >> $GITHUB_OUTPUT
 
       - name: Install ArgoCD CLI
         run: |
@@ -174,89 +181,59 @@ jobs:
           install -m 755 argocd /usr/local/bin/argocd
           argocd version --client
 
-      # Login with username/password
       - name: ArgoCD login (normalize endpoint)
         env:
-          ARGOCD_SERVER:   ${{ secrets.ARGOCD_SERVER }}
+          ARGOCD_SERVER:   ${{ secrets.ARGOCD_SERVER }}   # can be http(s)://host or host[:port]
           ARGOCD_USERNAME: ${{ secrets.ARGOCD_USERNAME }}
           ARGOCD_PASSWORD: ${{ secrets.ARGOCD_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
-
-          RAW="${ARGOCD_SERVER}"
-          SCHEME="https"
-          HOSTPORT="$RAW"
-
-          # Strip scheme if present and remember which one it was
-          if [[ "$RAW" =~ ^https:// ]]; then
-            SCHEME="https"
-            HOSTPORT="${RAW#https://}"
-          elif [[ "$RAW" =~ ^http:// ]]; then
-            SCHEME="http"
-            HOSTPORT="${RAW#http://}"
-          fi
-
-          # Drop any trailing slash
+          RAW="${ARGOCD_SERVER}"; SCHEME="https"; HOSTPORT="$RAW"
+          if [[ "$RAW" =~ ^https:// ]]; then SCHEME="https"; HOSTPORT="${RAW#https://}";
+          elif [[ "$RAW" =~ ^http:// ]]; then SCHEME="http"; HOSTPORT="${RAW#http://}"; fi
           HOSTPORT="${HOSTPORT%/}"
-
-          # If no explicit port, add default by scheme
           if [[ "$HOSTPORT" != *:* ]]; then
-            if [[ "$SCHEME" == "http" ]]; then
-              HOSTPORT="${HOSTPORT}:80"
-            else
-              HOSTPORT="${HOSTPORT}:443"
-            fi
+            [[ "$SCHEME" == "http" ]] && HOSTPORT="${HOSTPORT}:80" || HOSTPORT="${HOSTPORT}:443"
           fi
-
-          # Flags: grpc-web for ingress; plaintext for http; insecure for self-signed/LetsEncrypt staging
           FLAGS=( --grpc-web )
-          if [[ "$SCHEME" == "http" ]]; then
-            FLAGS+=( --plaintext )
-          else
-            FLAGS+=( --insecure )
-          fi
+          [[ "$SCHEME" == "http" ]] && FLAGS+=( --plaintext ) || FLAGS+=( --insecure )
+          echo "Login $HOSTPORT ($SCHEME) flags: ${FLAGS[*]}"
+          argocd login "$HOSTPORT" "${FLAGS[@]}" --username "$ARGOCD_USERNAME" --password "$ARGOCD_PASSWORD"
 
-          echo "Logging into ArgoCD at: $HOSTPORT (scheme=$SCHEME) with flags: ${FLAGS[*]}"
-          argocd login "$HOSTPORT" "${FLAGS[@]}" \
-            --username "$ARGOCD_USERNAME" \
-            --password "$ARGOCD_PASSWORD"
-
-
-      # Create or upsert the Application pointing at Helm chart
-      - name: Create or update Application
+      - name: Create or update Application (per env) with CreateNamespace=true
         env:
-          APP_NAME: ${{ vars.APP_NAME || 'giropops-senhas' }}
-          DEST_SERVER: ${{ vars.ARGOCD_DEST_SERVER || 'https://kubernetes.default.svc' }}
-          DEST_NAMESPACE: ${{ vars.ARGOCD_DEST_NAMESPACE || 'giropops-senhas' }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
         run: |
           set -euo pipefail
-          APP_EXISTS=$(argocd app get "$APP_NAME" >/dev/null 2>&1 && echo yes || echo no)
-
-          if [ "$APP_EXISTS" = "no" ]; then
-            argocd app create "$APP_NAME" \
+          APP="${{ steps.compute.outputs.app_name }}"
+          NS="${{ steps.compute.outputs.namespace }}"
+          TAG="${{ steps.compute.outputs.image_tag }}"
+          # create if missing
+          if ! argocd app get "$APP" >/dev/null 2>&1; then
+            argocd app create "$APP" \
               --repo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" \
               --revision "$GITHUB_REF_NAME" \
               --path kubernetes/chart \
-              --dest-server "$DEST_SERVER" \
-              --dest-namespace "$DEST_NAMESPACE" \
+              --dest-server "https://kubernetes.default.svc" \
+              --dest-namespace "$NS" \
+              --sync-option CreateNamespace=true \
               --helm-set image.repository="$IMAGE_NAME" \
-              --helm-set image.tag="${{ steps.compute.outputs.image_tag }}" \
-              --sync-policy automated \
-              --auto-prune
+              --helm-set image.tag="$TAG" \
+              --sync-policy automated --auto-prune
           else
-            # update chart values (image tag) and branch revision
-            argocd app set "$APP_NAME" \
+            # update namespace, revision, and image params + ensure CreateNamespace=true
+            argocd app set "$APP" \
               --revision "$GITHUB_REF_NAME" \
+              --dest-namespace "$NS" \
+              --sync-option CreateNamespace=true \
               -p image.repository="$IMAGE_NAME" \
-              -p image.tag="${{ steps.compute.outputs.image_tag }}"
+              -p image.tag="$TAG"
           fi
 
       - name: Sync & wait
-        env:
-          APP_NAME: ${{ vars.APP_NAME || 'giropops-senhas' }}
         run: |
-          argocd app sync "$APP_NAME" --prune
-          argocd app wait "$APP_NAME" --health --sync --timeout 600
+          APP="${{ steps.compute.outputs.app_name }}"
+          argocd app sync "$APP" --prune
+          argocd app wait "$APP" --health --sync --timeout 600
 
