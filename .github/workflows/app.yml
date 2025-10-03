@@ -252,8 +252,23 @@ jobs:
               -p deployments.giropops-senhas.labels.env="$ENV_NAME"
           fi
 
-      - name: Sync & wait
+      - name: Sync & wait (resilient)
+        shell: bash
         run: |
+          set -euo pipefail
           APP="${{ steps.compute.outputs.app_name }}"
-          argocd app sync "$APP" --prune --timeout 600
-          argocd app wait "$APP" --health --sync --timeout 600
+
+          # If autosync already started something, wait for it to finish first.
+          argocd app wait "$APP" --operation --timeout 600 || true
+
+          # Start our sync but don't block here (avoid race with controller).
+          #    --prune stays; --async returns immediately.
+          if ! argocd app sync "$APP" --prune --async; then
+            echo "sync returned non-zero (likely another op). Waiting then retrying once..."
+            argocd app wait "$APP" --operation --timeout 600 || true
+            argocd app sync "$APP" --prune --async
+          fi
+
+          # Wait until it's fully synced and healthy.
+          argocd app wait "$APP" --sync --health --timeout 600
+
