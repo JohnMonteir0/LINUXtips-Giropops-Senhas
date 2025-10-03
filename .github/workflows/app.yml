@@ -101,7 +101,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.13'
 
       - name: Install deps
         run: |
@@ -177,7 +177,7 @@ jobs:
       # Login with username/password
       - name: ArgoCD login (normalize endpoint)
         env:
-          ARGOCD_SERVER:   ${{ secrets.ARGOCD_SERVER }}   # can be with or without scheme; both are okay
+          ARGOCD_SERVER:   ${{ secrets.ARGOCD_SERVER }}
           ARGOCD_USERNAME: ${{ secrets.ARGOCD_USERNAME }}
           ARGOCD_PASSWORD: ${{ secrets.ARGOCD_PASSWORD }}
         shell: bash
