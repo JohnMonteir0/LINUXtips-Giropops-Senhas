@@ -1,15 +1,10 @@
 {{- range $component, $config := .Values.services }}
----
 apiVersion: v1
 kind: Service
 metadata:
-  {{- if eq $component "redis" }}
-  name: redis-service
-  {{- else }}
-  name: {{ $component }}
-  {{- end }}
+  name: {{ if eq $component "redis" }}redis-service{{ else }}{{ $component }}{{ end }}
   labels:
-    {{- include "app.labels" $config | nindent 4 }}
+    {{- include "app.labels" (dict "cfg" $config "root" $) | nindent 4 }}
 spec:
   type: {{ $config.serviceType | default "ClusterIP" }}
   selector:
@@ -24,5 +19,5 @@ spec:
       nodePort: {{ $p.nodePort }}
       {{- end }}
   {{- end }}
+---
 {{- end }}
-

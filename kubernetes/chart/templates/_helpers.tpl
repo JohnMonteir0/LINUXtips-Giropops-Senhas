@@ -1,34 +1,35 @@
 {{/*
-Criar as tags
+App labels
+- app: from component labels.app (fallback to chart name)
+- env: from global .Values.environment (fallback "dev")
+Usage in templates:
+  {{ include "app.labels" (dict "cfg" $config "root" $) }}
 */}}
 {{- define "app.labels" -}}
-app: {{ .labels.app | quote }}
-env: {{ .labels.env | quote}}
+{{- $cfg := .cfg -}}
+{{- $root := .root -}}
+app: {{ default $root.Chart.Name ($cfg.labels.app) | quote }}
+env: {{ default "dev" $root.Values.environment | quote }}
 {{- end }}
 
 {{/*
-Definir limite dos recursos
-*/}}
-{{- define "app.resources" -}}
-requests:
-  memory: {{ .resources.requests.memory }}
-  cpu: {{ .resources.requests.cpu }}
-limits:
-  memory: {{ .resources.limits.memory }}
-  cpu: {{ .resources.limits.cpu }}
-{{- end }}
-
-{{/*
-Definir container ports
+Container ports
+Given a component .ports list with (name, port, targetPort):
+- containerPort uses targetPort if present, else port
+Usage:
+  {{ include "app.ports" $config | nindent 12 }}
 */}}
 {{- define "app.ports" -}}
-{{ range .ports }}
-- containerPort: {{ .port }}
+{{- range .ports }}
+- name: {{ .name | default (printf "p-%v" .port) }}
+  containerPort: {{ .targetPort | default .port }}
 {{- end }}
 {{- end }}
 
 {{/*
-Define configmaps database
+Database configmap (optional helper)
+Usage:
+  {{ include "database.configmap" (dict "component" "giropops-senhas" "config" $yourDbCfg ) }}
 */}}
 {{- define "database.configmap" -}}
 apiVersion: v1
@@ -40,8 +41,10 @@ data:
     {{- toYaml .config | nindent 4 }}
 {{- end }}
 
-{{/* 
-  Define configmaps observability 
+{{/*
+Observability configmap (optional helper)
+Usage:
+  {{ include "observability.configmap" (dict "component" "otel-collector-config" "config" $yourOtelCfg ) }}
 */}}
 {{- define "observability.configmap" -}}
 apiVersion: v1
