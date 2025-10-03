@@ -1,23 +1,25 @@
+# -------- Global ----------
+environment: stg        # dev | stg | prod
+app:
+  image:
+    repository: johnmonteir0/linuxtips-giropops-senhas
+    tag: stg
+    pullPolicy: IfNotPresent
+
+# -------- Deployments (component-specific settings only) ----------
 deployments:
   giropops-senhas:
-    name: "giropops-senhas"
-    image: "johnmonteir0/linuxtips-giropops-senhas:dev-0fffc7545c6493df0bde3fc14064fd40f4c4d133"
+    name: giropops-senhas
     replicas: 3
-    ports:
-      - port: 5000
-        targetPort: 5000
-        name: "giropops-senhas-port"
-        NodePort: 32500
     labels:
-      app: "giropops-senhas"
-      env: "labs"
+      app: giropops-senhas
+    ports:
+      - name: app
+        port: 5000
+        targetPort: 5000
     resources:
-      requests:
-        memory: "128Mi"
-        cpu: "250m"
-      limits:
-        memory: "256Mi"
-        cpu: "500m"
+      requests: { memory: "128Mi", cpu: "250m" }
+      limits:   { memory: "256Mi", cpu: "500m" }
     env:
       - name: OTEL_SERVICE_NAME
         value: "giropops-senhas"
@@ -25,8 +27,6 @@ deployments:
         value: "info"
       - name: OTEL_TRACES_SAMPLER
         value: "always_on"
-      - name: OTEL_RESOURCE_ATTRIBUTES
-        value: "deployment.environment=labs"
       - name: OTEL_EXPORTER_OTLP_ENDPOINT
         value: "otel-collector-opentelemetry-collector.monitoring:4317"
       - name: OTEL_EXPORTER_OTLP_PROTOCOL
@@ -35,97 +35,53 @@ deployments:
         value: "true"
 
   redis:
+    name: redis
     image: "johnmonteir0/chainguard-redis"
     replicas: 1
-    port: 6379
     labels:
-      app: "redis"
-      env: "labs"
+      app: redis
+    ports:
+      - name: service
+        port: 6379
+        targetPort: 6379
     resources:
-      requests:
-        memory: "128Mi"
-        cpu: "250m"
-      limits:
-        memory: "256Mi"
-        cpu: "500m"
+      requests: { memory: "128Mi", cpu: "250m" }
+      limits:   { memory: "256Mi", cpu: "500m" }
 
+# -------- Services ----------
 services:
   giropops-senhas:
-    ports:
-      - port: 5000
-        targetPort: 5000
-        name: "app"
-        serviceType: "ClusterIP"
     labels:
-      app: "giropops-senhas"
-      env: "labs"
+      app: giropops-senhas
+    serviceType: ClusterIP
+    ports:
+      - name: app
+        port: 5000
+        targetPort: 5000
 
   redis:
-    ports:
-      - port: 6379
-        targetPort: 6379
-        name: "service"
-        serviceType: "ClusterIP"
     labels:
-      app: "redis"
-      env: "labs"
+      app: redis
+    serviceType: ClusterIP
+    ports:
+      - name: service
+        port: 6379
+        targetPort: 6379
 
-observability:
-  otel-collector-config:
-    receivers:
-      otlp:
-        protocols:
-          grpc:
-            endpoint: 0.0.0.0:4317
-          http:
-            endpoint: 0.0.0.0:4318
-    processors:
-      batch: {}
-    exporters:
-      otlphttp:
-        endpoint: "http://jaeger-collector.monitoring:4318"
-      debug:
-        verbosity: normal
-      prometheus:
-        endpoint: "0.0.0.0:8889"
-    service:
-      telemetry:
-        logs:
-          level: info
-      pipelines:
-        traces:
-          receivers:  [otlp]
-          processors: [batch]
-          exporters:  [otlphttp, debug]
-        metrics:
-          receivers:  [otlp]
-          processors: [batch]
-          exporters:  [prometheus]
-        logs:
-          receivers:  [otlp]
-          processors: [batch]
-          exporters:  [debug]
-
-databases:
-  giropops-senhas:
-    mysql:
-      host: "mysql.svc.cluster.local"
-      port: 3306
-      name: "MyDB"
-
+# -------- Monitoring (ServiceMonitor) ----------
 monitoring:
   enabled: true
   serviceMonitors:
     - name: giropops-senhas
-      namespace: giropops-senhas
-      labels: { app: giropops-senhas, env: labs }
-      prometheusRelease: kube-prometheus-stack
+      labels:
+        app: giropops-senhas
       selector:
         matchLabels:
           app: giropops-senhas
-      targetNamespace: giropops-senhas
       endpoints:
         - port: app
           path: /metrics
           interval: 30s
           scrapeTimeout: 10s
+      # Optional: Label Prometheus release
+      prometheusRelease: kube-prometheus-stack

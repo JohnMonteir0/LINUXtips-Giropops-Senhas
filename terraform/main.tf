@@ -23,7 +23,7 @@ module "eks_bottlerocket" {
 
       min_size     = 3
       max_size     = 6
-      desired_size = 4
+      desired_size = 6
 
 
       ignore_failed_scaling_activities = true

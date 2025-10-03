@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   # -----------------------------
-  # 1) Build (no push) + Push job
+  # Build (no push) + Push job
   # -----------------------------
   build_and_push:
     runs-on: ubuntu-latest
@@ -90,7 +90,7 @@ jobs:
           cache-to: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
 
   # -----------------------------
-  # 2) Sonar (tests + coverage + gate)
+  # Sonar (tests + coverage + gate)
   # -----------------------------
   sonar_scan:
     runs-on: ubuntu-latest
@@ -101,7 +101,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.13'
 
       - name: Install deps
         run: |
@@ -147,7 +147,7 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
   # -----------------------------
-  # 3) Argo CD deployment
+  # Argo CD deployment
   # -----------------------------
   deploy:
     runs-on: ubuntu-latest
@@ -157,16 +157,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Compute env + tag
+      - name: Compute env + tag + namespace + app name
         id: compute
+        shell: bash
         run: |
           REF="${GITHUB_REF#refs/heads/}"
           if [[ "$REF" == "main" ]]; then ENV=prod
           elif [[ "$REF" == "staging" || "$REF" == stg/* ]]; then ENV=stg
           else ENV=dev; fi
-          echo "env_name=$ENV" >> $GITHUB_OUTPUT
-          echo "short_sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
-          echo "image_tag=${ENV}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+          case "$ENV" in
+            dev)  NS="dev-giropops-senhas";;
+            stg)  NS="stg-giropops-senhas";;
+            prod) NS="prd-giropops-senhas";;
+          esac
+
+          SHA7="${GITHUB_SHA::7}"
+          TAG="${ENV}-${SHA7}"
+
+          echo "env_name=$ENV"                  >> $GITHUB_OUTPUT
+          echo "short_sha=$SHA7"                >> $GITHUB_OUTPUT
+          echo "image_tag=$TAG"                 >> $GITHUB_OUTPUT
+          echo "namespace=$NS"                  >> $GITHUB_OUTPUT
+          echo "app_name=giropops-senhas-$ENV"  >> $GITHUB_OUTPUT
 
       - name: Install ArgoCD CLI
         run: |
@@ -174,50 +187,88 @@ jobs:
           install -m 755 argocd /usr/local/bin/argocd
           argocd version --client
 
-      # Login with username/password
-      - name: ArgoCD login
+      - name: ArgoCD login (normalize endpoint)
         env:
-          ARGOCD_SERVER:   ${{ secrets.ARGOCD_SERVER }}
+          ARGOCD_SERVER:   ${{ secrets.ARGOCD_SERVER }}   # http(s)://host or host[:port]
           ARGOCD_USERNAME: ${{ secrets.ARGOCD_USERNAME }}
           ARGOCD_PASSWORD: ${{ secrets.ARGOCD_PASSWORD }}
-        run: |
-          # --insecure if you have a staging cert; remove when you use trusted certs
-          argocd login "$ARGOCD_SERVER" --username "$ARGOCD_USERNAME" --password "$ARGOCD_PASSWORD" --insecure
-
-      # Create or upsert the Application pointing at Helm chart
-      - name: Create or update Application
-        env:
-          APP_NAME: ${{ vars.APP_NAME || 'giropops-senhas' }}
-          DEST_SERVER: ${{ vars.ARGOCD_DEST_SERVER || 'https://kubernetes.default.svc' }}
-          DEST_NAMESPACE: ${{ vars.ARGOCD_DEST_NAMESPACE || 'giropops-senhas' }}
-          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        shell: bash
         run: |
           set -euo pipefail
-          APP_EXISTS=$(argocd app get "$APP_NAME" >/dev/null 2>&1 && echo yes || echo no)
+          RAW="${ARGOCD_SERVER}"; SCHEME="https"; HOSTPORT="$RAW"
+          if [[ "$RAW" =~ ^https:// ]]; then SCHEME="https"; HOSTPORT="${RAW#https://}";
+          elif [[ "$RAW" =~ ^http:// ]]; then SCHEME="http"; HOSTPORT="${RAW#http://}"; fi
+          HOSTPORT="${HOSTPORT%/}"
+          if [[ "$HOSTPORT" != *:* ]]; then
+            [[ "$SCHEME" == "http" ]] && HOSTPORT="${HOSTPORT}:80" || HOSTPORT="${HOSTPORT}:443"
+          fi
+          FLAGS=( --grpc-web )
+          [[ "$SCHEME" == "http" ]] && FLAGS+=( --plaintext ) || FLAGS+=( --insecure )
+          echo "Login $HOSTPORT ($SCHEME) flags: ${FLAGS[*]}"
+          argocd login "$HOSTPORT" "${FLAGS[@]}" --username "$ARGOCD_USERNAME" --password "$ARGOCD_PASSWORD"
 
-          if [ "$APP_EXISTS" = "no" ]; then
-            argocd app create "$APP_NAME" \
+      - name: Create or update Application (per env) with CreateNamespace=true
+        env:
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="${{ steps.compute.outputs.app_name }}"
+          NS="${{ steps.compute.outputs.namespace }}"
+          TAG="${{ steps.compute.outputs.image_tag }}"
+          ENV_NAME="${{ steps.compute.outputs.env_name }}"
+          IMAGE_REPO="${IMAGE_NAME}"
+          IMAGE_FULL="${IMAGE_REPO}:${TAG}"
+
+          # If you add per-env values files later, add:
+          #   --values kubernetes/chart/values-${ENV_NAME}.yaml
+          # to BOTH create and set commands.
+
+          if ! argocd app get "$APP" >/dev/null 2>&1; then
+            argocd app create "$APP" \
               --repo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" \
               --revision "$GITHUB_REF_NAME" \
               --path kubernetes/chart \
-              --dest-server "$DEST_SERVER" \
-              --dest-namespace "$DEST_NAMESPACE" \
-              --helm-set image.repository="$IMAGE_NAME" \
-              --helm-set image.tag="${{ steps.compute.outputs.image_tag }}" \
-              --sync-policy automated \
-              --auto-prune
+              --dest-server "https://kubernetes.default.svc" \
+              --dest-namespace "$NS" \
+              --sync-option CreateNamespace=true \
+              --sync-policy automated --auto-prune \
+              \
+              --helm-set environment="$ENV_NAME" \
+              --helm-set-string app.image.repository="$IMAGE_REPO" \
+              --helm-set-string app.image.tag="$TAG" \
+              --helm-set-string deployments.giropops-senhas.image="$IMAGE_FULL" \
+              --helm-set-string deployments.giropops-senhas.labels.env="$ENV_NAME"
           else
-            # update chart values (image tag) and branch revision
-            argocd app set "$APP_NAME" \
+            argocd app set "$APP" \
               --revision "$GITHUB_REF_NAME" \
-              -p image.repository="$IMAGE_NAME" \
-              -p image.tag="${{ steps.compute.outputs.image_tag }}"
+              --dest-namespace "$NS" \
+              --sync-option CreateNamespace=true \
+              \
+              -p environment="$ENV_NAME" \
+              -p app.image.repository="$IMAGE_REPO" \
+              -p app.image.tag="$TAG" \
+              -p deployments.giropops-senhas.image="$IMAGE_FULL" \
+              -p deployments.giropops-senhas.labels.env="$ENV_NAME"
           fi
 
-      - name: Sync & wait
-        env:
-          APP_NAME: ${{ vars.APP_NAME || 'giropops-senhas' }}
+      - name: Sync & wait (resilient)
+        shell: bash
         run: |
-          argocd app sync "$APP_NAME" --prune
-          argocd app wait "$APP_NAME" --health --sync --timeout 600
+          set -euo pipefail
+          APP="${{ steps.compute.outputs.app_name }}"
+
+          # If autosync already started something, wait for it to finish first.
+          argocd app wait "$APP" --operation --timeout 600 || true
+
+          # Start our sync but don't block here (avoid race with controller).
+          #    --prune stays; --async returns immediately.
+          if ! argocd app sync "$APP" --prune --async; then
+            echo "sync returned non-zero (likely another op). Waiting then retrying once..."
+            argocd app wait "$APP" --operation --timeout 600 || true
+            argocd app sync "$APP" --prune --async
+          fi
+
+          # Wait until it's fully synced and healthy.
+          argocd app wait "$APP" --sync --health --timeout 600
 
