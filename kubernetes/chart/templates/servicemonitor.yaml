@@ -4,14 +4,13 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: {{ $sm.name }}
-  namespace: {{ $sm.namespace | default $.Release.Namespace }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- if $sm.labels }}
     {{- range $k, $v := $sm.labels }}
     {{ $k }}: {{ $v | quote }}
     {{- end }}
     {{- end }}
-    # Optional: if your Prometheus release filters ServiceMonitors by label
     release: {{ $sm.prometheusRelease | default "kube-prometheus-stack" | quote }}
 spec:
   selector:
@@ -21,7 +20,7 @@ spec:
       {{- end }}
   namespaceSelector:
     matchNames:
-      - {{ $sm.targetNamespace | default $.Release.Namespace }}
+      - {{ $.Release.Namespace }}
   endpoints:
     {{- range $ep := $sm.endpoints }}
     - port: {{ $ep.port | quote }}

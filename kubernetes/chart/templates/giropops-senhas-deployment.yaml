@@ -2,22 +2,24 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ $component }}
+  name: {{ $config.name | default $component }}
   labels:
-    {{- include "app.labels" $config | nindent 4 }}
+    {{- include "app.labels" (dict "cfg" $config "root" $) | nindent 4 }}
 spec:
   replicas: {{ $config.replicas | default 2 }}
   selector:
     matchLabels:
-      app: {{ $config.labels.app }}
+      app: {{ $config.labels.app | default $component }}
   template:
     metadata:
       labels:
-        {{- include "app.labels" $config | nindent 8 }}
+        {{- include "app.labels" (dict "cfg" $config "root" $) | nindent 8 }}
     spec:
       containers:
-        - name: {{ $component }}
-          image: {{ $config.image }}
+        - name: {{ $config.name | default $component }}
+          # Per-deploy image wins; else global repo:tag
+          image: {{ default (printf "%s:%s" $.Values.app.image.repository $.Values.app.image.tag) $config.image | quote }}
+          imagePullPolicy: {{ $.Values.app.image.pullPolicy | default "IfNotPresent" }}
           ports:
             {{- include "app.ports" $config | nindent 12 }}
           {{- if $config.env }}
@@ -26,7 +28,21 @@ spec:
             - name: {{ $env.name }}
               value: {{ $env.value | quote }}
             {{- end }}
+          {{- else }}
+          env: []
           {{- end }}
+          # always inject environment for app logic and telemetry
+          env:
+            {{- if $config.env }}
+            {{- range $env := $config.env }}
+            - name: {{ $env.name }}
+              value: {{ $env.value | quote }}
+            {{- end }}
+            {{- end }}
+            - name: DEPLOY_ENV
+              value: {{ $.Values.environment | quote }}
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment={{ $.Values.environment }}"
           {{- if $config.resources }}
           resources:
             {{- toYaml $config.resources | nindent 12 }}
@@ -41,5 +57,3 @@ spec:
       {{- end }}
 ---
 {{- end }}
-
-
