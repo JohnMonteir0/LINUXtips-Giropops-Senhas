@@ -1,9 +1,9 @@
 # -------- Global ----------
-environment: dev        # dev | stg | prod
+environment: stg        # dev | stg | prod
 app:
   image:
     repository: johnmonteir0/linuxtips-giropops-senhas
-    tag: dev
+    tag: stg
     pullPolicy: IfNotPresent
 
 # -------- Deployments (component-specific settings only) ----------
